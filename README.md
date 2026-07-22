@@ -119,6 +119,9 @@ backend. Cache token counts are always zero.
 
 ## Environment variables
 
+Defaults as set by the image. The binary on its own defaults to `http://localhost:11434/v1` and
+`qwen3:1.7b`, which suit a local Ollama.
+
 | Variable | Default | Description |
 |---|---|---|
 | `LISTEN_ADDR` | `:8080` | Address the Bedrock API listens on |
@@ -177,6 +180,7 @@ To use an existing Ollama or llama.cpp instead of the bundled one, run the binar
 point it at any OpenAI-compatible `/v1/chat/completions` endpoint:
 
 ```bash
+go build -o fakerock ./cmd/fakerock
 BACKEND_BASE_URL=http://localhost:11434/v1 BACKEND_MODEL=qwen3:1.7b ./fakerock
 ```
 
