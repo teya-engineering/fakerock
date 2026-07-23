@@ -15,9 +15,12 @@ import (
 )
 
 type stubBackend struct {
-	got  openai.ChatRequest
-	resp openai.ChatResponse
-	err  error
+	got       openai.ChatRequest
+	resp      openai.ChatResponse
+	err       error
+	gotEmbed  openai.EmbeddingRequest
+	embedResp openai.EmbeddingResponse
+	embedErr  error
 }
 
 func (s *stubBackend) Chat(_ context.Context, req openai.ChatRequest) (openai.ChatResponse, error) {
@@ -25,9 +28,14 @@ func (s *stubBackend) Chat(_ context.Context, req openai.ChatRequest) (openai.Ch
 	return s.resp, s.err
 }
 
-func newTestServer(t *testing.T, backend ChatBackend) *Server {
+func (s *stubBackend) Embeddings(_ context.Context, req openai.EmbeddingRequest) (openai.EmbeddingResponse, error) {
+	s.gotEmbed = req
+	return s.embedResp, s.embedErr
+}
+
+func newTestServer(t *testing.T, backend Backend) *Server {
 	t.Helper()
-	return New(backend, "test-model")
+	return New(backend, "test-model", "test-embedding-model", 0)
 }
 
 func post(t *testing.T, srv *Server, path, body string) *httptest.ResponseRecorder {
@@ -132,10 +140,52 @@ func TestApplyGuardrailPassesThrough(t *testing.T) {
 	}
 }
 
+func TestInvokeEmbeddingHappyPath(t *testing.T) {
+	backend := &stubBackend{embedResp: openai.EmbeddingResponse{
+		Data:  []openai.EmbeddingData{{Embedding: []float32{0.1, 0.2, 0.3, 0.4}}},
+		Usage: openai.Usage{PromptTokens: 7},
+	}}
+	srv := newTestServer(t, backend)
+
+	rec := post(t, srv, "/model/amazon.titan-embed-text-v2:0/invoke", `{"inputText":"hello","dimensions":2}`)
+
+	if rec.Code != http.StatusOK {
+		t.Fatalf("status = %d, want 200, body = %s", rec.Code, rec.Body.String())
+	}
+	if backend.gotEmbed.Input != "hello" {
+		t.Errorf("backend input = %q, want hello", backend.gotEmbed.Input)
+	}
+	if backend.gotEmbed.Model != "test-embedding-model" {
+		t.Errorf("backend model = %q, want test-embedding-model", backend.gotEmbed.Model)
+	}
+	if backend.gotEmbed.Dimensions == nil || *backend.gotEmbed.Dimensions != 2 {
+		t.Errorf("backend dimensions = %v, want 2 forwarded", backend.gotEmbed.Dimensions)
+	}
+
+	var resp bedrock.TitanEmbeddingResponse
+	if err := json.Unmarshal(rec.Body.Bytes(), &resp); err != nil {
+		t.Fatalf("decoding response: %v", err)
+	}
+	if len(resp.Embedding) != 2 {
+		t.Errorf("embedding len = %d, want 2 (trimmed to requested dimensions)", len(resp.Embedding))
+	}
+	if resp.InputTextTokenCount != 7 {
+		t.Errorf("inputTextTokenCount = %d, want 7", resp.InputTextTokenCount)
+	}
+}
+
+func TestInvokeEmbeddingRejectsNonPositiveDimensions(t *testing.T) {
+	srv := newTestServer(t, &stubBackend{})
+
+	rec := post(t, srv, "/model/amazon.titan-embed-text-v2:0/invoke", `{"inputText":"hi","dimensions":-1}`)
+
+	assertAWSError(t, rec, http.StatusBadRequest, errValidation)
+}
+
 func TestUnknownOperation(t *testing.T) {
 	srv := newTestServer(t, &stubBackend{})
 
-	rec := post(t, srv, "/model/sonnet/invoke", `{}`)
+	rec := post(t, srv, "/model/sonnet/unknown-op", `{}`)
 
 	assertAWSError(t, rec, http.StatusNotFound, errNotFound)
 }
