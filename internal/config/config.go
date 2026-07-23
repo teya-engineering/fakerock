@@ -2,6 +2,7 @@ package config
 
 import (
 	"fmt"
+	"log/slog"
 	"os"
 	"strconv"
 	"strings"
@@ -23,6 +24,7 @@ type Config struct {
 	Model               string
 	EmbeddingModel      string
 	EmbeddingDimensions int
+	LogLevel            slog.Level
 }
 
 func Load() (Config, error) {
@@ -49,6 +51,13 @@ func Load() (Config, error) {
 		dimensions = parsed
 	}
 
+	logLevel := slog.LevelInfo
+	if raw := os.Getenv("LOG_LEVEL"); raw != "" {
+		if err := logLevel.UnmarshalText([]byte(raw)); err != nil {
+			return Config{}, fmt.Errorf("LOG_LEVEL: %w", err)
+		}
+	}
+
 	backendBaseURL := strings.TrimSuffix(valueOr(os.Getenv("BACKEND_BASE_URL"), defaultBackendBaseURL), "/")
 
 	return Config{
@@ -59,6 +68,7 @@ func Load() (Config, error) {
 		Model:               model,
 		EmbeddingModel:      valueOr(os.Getenv("BACKEND_EMBEDDING_MODEL"), model),
 		EmbeddingDimensions: dimensions,
+		LogLevel:            logLevel,
 	}, nil
 }
 

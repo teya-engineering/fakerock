@@ -17,6 +17,7 @@ func main() {
 		slog.Error("invalid configuration", "err", err)
 		os.Exit(1)
 	}
+	slog.SetLogLoggerLevel(cfg.LogLevel)
 
 	srv := &http.Server{
 		Addr:              cfg.Addr,
