@@ -1,6 +1,7 @@
 package translate
 
 import (
+	"bytes"
 	"encoding/json"
 	"testing"
 
@@ -44,6 +45,43 @@ func TestToOpenAISystemAndText(t *testing.T) {
 	}
 	if got.Model != "qwen3" {
 		t.Errorf("model = %q, want qwen3", got.Model)
+	}
+}
+
+func TestToOpenAIImageBlock(t *testing.T) {
+	// base64 of "hello" is "aGVsbG8=". Every Bedrock format maps to image/<format>.
+	for _, format := range []string{"png", "jpeg", "gif", "webp"} {
+		req := bedrock.ConverseRequest{
+			Messages: []bedrock.Message{
+				{Role: "user", Content: []bedrock.ContentBlock{
+					{Text: text("what is in this image?")},
+					{Image: &bedrock.ImageBlock{Format: format, Source: bedrock.ImageSource{Bytes: []byte("hello")}}},
+				}},
+			},
+		}
+
+		got, err := ToOpenAI("qwen3", req)
+		if err != nil {
+			t.Fatalf("ToOpenAI(%s): %v", format, err)
+		}
+		if len(got.Messages) != 1 {
+			t.Fatalf("%s: messages = %d, want 1: %+v", format, len(got.Messages), got.Messages)
+		}
+
+		parts, ok := got.Messages[0].Content.([]openai.ContentPart)
+		if !ok {
+			t.Fatalf("%s: content = %T, want []openai.ContentPart", format, got.Messages[0].Content)
+		}
+		if len(parts) != 2 {
+			t.Fatalf("%s: parts = %d, want 2: %+v", format, len(parts), parts)
+		}
+		if parts[0].Type != "text" || parts[0].Text != "what is in this image?" {
+			t.Errorf("%s: parts[0] = %+v", format, parts[0])
+		}
+		want := "data:image/" + format + ";base64,aGVsbG8="
+		if parts[1].Type != "image_url" || parts[1].ImageURL == nil || parts[1].ImageURL.URL != want {
+			t.Errorf("%s: parts[1] = %+v, want url %q", format, parts[1], want)
+		}
 	}
 }
 
@@ -103,6 +141,33 @@ func TestToOpenAIToolRoundTrip(t *testing.T) {
 	}
 	if got.Tools[0].Function.Name != "get_weather" || string(got.Tools[0].Function.Parameters) != `{"type":"object"}` {
 		t.Errorf("tool = %+v", got.Tools[0])
+	}
+}
+
+func TestToOpenAIToolCallOnlyOmitsContent(t *testing.T) {
+	req := bedrock.ConverseRequest{
+		Messages: []bedrock.Message{
+			{Role: "assistant", Content: []bedrock.ContentBlock{
+				{ToolUse: &bedrock.ToolUse{ToolUseID: "call_1", Name: "ping", Input: json.RawMessage(`{}`)}},
+			}},
+		},
+	}
+
+	got, err := ToOpenAI("qwen3", req)
+	if err != nil {
+		t.Fatalf("ToOpenAI: %v", err)
+	}
+	if got.Messages[0].Content != nil {
+		t.Fatalf("content = %#v, want nil", got.Messages[0].Content)
+	}
+
+	// With Content set to any, only a nil interface is dropped by omitempty.
+	raw, err := json.Marshal(got.Messages[0])
+	if err != nil {
+		t.Fatalf("marshal: %v", err)
+	}
+	if bytes.Contains(raw, []byte(`"content"`)) {
+		t.Errorf("content must be omitted on the wire: %s", raw)
 	}
 }
 

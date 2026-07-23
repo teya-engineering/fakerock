@@ -19,8 +19,7 @@ func FromOpenAI(resp openai.ChatResponse, latency time.Duration) (bedrock.Conver
 	choice := resp.Choices[0]
 
 	content := []bedrock.ContentBlock{}
-	if choice.Message.Content != "" {
-		text := choice.Message.Content
+	if text, _ := choice.Message.Content.(string); text != "" {
 		content = append(content, bedrock.ContentBlock{Text: &text})
 	}
 

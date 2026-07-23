@@ -13,11 +13,23 @@ type ChatRequest struct {
 	Stop        []string  `json:"stop,omitempty"`
 }
 
+// Content is a plain string or a []ContentPart for multimodal messages. With any,
+// json omits it only when nil, so callers set nil (not "") to drop an empty content.
 type Message struct {
 	Role       string     `json:"role"`
-	Content    string     `json:"content,omitempty"`
+	Content    any        `json:"content,omitempty"`
 	ToolCalls  []ToolCall `json:"tool_calls,omitempty"`
 	ToolCallID string     `json:"tool_call_id,omitempty"`
+}
+
+type ContentPart struct {
+	Type     string    `json:"type"`
+	Text     string    `json:"text,omitempty"`
+	ImageURL *ImageURL `json:"image_url,omitempty"`
+}
+
+type ImageURL struct {
+	URL string `json:"url"`
 }
 
 type ToolCall struct {
