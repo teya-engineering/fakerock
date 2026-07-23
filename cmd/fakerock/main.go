@@ -20,11 +20,11 @@ func main() {
 
 	srv := &http.Server{
 		Addr:              cfg.Addr,
-		Handler:           server.New(backend.New(cfg.BackendBaseURL, cfg.BackendTimeout), cfg.Model),
+		Handler:           server.New(backend.New(cfg.BackendBaseURL, cfg.EmbeddingBaseURL, cfg.BackendTimeout), cfg.Model, cfg.EmbeddingModel, cfg.EmbeddingDimensions),
 		ReadHeaderTimeout: 10 * time.Second,
 	}
 
-	slog.Info("listening", "addr", cfg.Addr, "backend", cfg.BackendBaseURL, "model", cfg.Model)
+	slog.Info("listening", "addr", cfg.Addr, "backend", cfg.BackendBaseURL, "model", cfg.Model, "embeddingModel", cfg.EmbeddingModel)
 	if err := srv.ListenAndServe(); err != nil {
 		slog.Error("server stopped", "err", err)
 		os.Exit(1)

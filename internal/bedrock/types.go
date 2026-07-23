@@ -169,3 +169,14 @@ type GuardrailUsage struct {
 }
 
 const GuardrailActionNone = "NONE"
+
+// Titan text embeddings ride the InvokeModel API, a different shape from Converse.
+type TitanEmbeddingRequest struct {
+	InputText  string `json:"inputText"`
+	Dimensions *int   `json:"dimensions,omitempty"`
+}
+
+type TitanEmbeddingResponse struct {
+	Embedding           []float32 `json:"embedding"`
+	InputTextTokenCount int       `json:"inputTextTokenCount"`
+}

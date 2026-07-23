@@ -109,6 +109,7 @@ cannot be pointed here this way.
 | `Converse` | Full translation, including tool calling |
 | `ConverseStream` | Same, returned as AWS event stream frames |
 | `ApplyGuardrail` | Always returns `action: NONE`, so content passes through |
+| `InvokeModel` (Titan text embeddings) | Translated to the backend's `/v1/embeddings`, resized to the requested width |
 
 Tool calling works in both directions: `toolConfig` reaches the model, `toolUse` blocks come back,
 and `toolResult` blocks are fed in on the next turn. `stopReason` is `tool_use` when the model calls
@@ -123,6 +124,16 @@ or an ollama `*-vl`). The bundled Qwen3 1.7B is text-only. fakerock only transla
 backend says comes straight back, so a text-only model returns its own `400` ("does not support
 image input") and a subscription-gated one returns `403`: surfaced loud, never swallowed.
 
+Embeddings go to a backend OpenAI `/v1/embeddings` endpoint. They are off by default: set
+`LLAMA_EMBEDDINGS=on` and the image runs a second llama-server in embedding mode on the bundled model
+(port 8082), since one server serves chat or embeddings, not both. Titan's `dimensions` (or
+`BACKEND_EMBEDDING_DIMENSIONS` when the request omits it) sets the output width, and the vector is
+trimmed or zero-padded to match, so it fits a fixed-width store even when the backend's native width
+differs. This makes the shape right for testing, not the vector semantically equivalent to Titan.
+The bundled model is a chat model, so it embeds but not well; point `BACKEND_EMBEDDING_BASE_URL` and
+`BACKEND_EMBEDDING_MODEL` at a real embedding backend (for example Ollama with an embedding model)
+when retrieval quality matters.
+
 ## Environment variables
 
 Defaults as set by the image. The binary on its own defaults to `http://localhost:11434/v1` and
@@ -134,8 +145,12 @@ Defaults as set by the image. The binary on its own defaults to `http://localhos
 | `LLAMA_CTX` | `32768` | Context size. A prompt with 19 tools can reach 19k tokens |
 | `LLAMA_NGL` | `0` | Layers offloaded to the GPU. Needs a CUDA `BASE_IMAGE` |
 | `LLAMA_REASONING` | `off` | Thinking. Off because Converse has nowhere to carry it |
-| `BACKEND_BASE_URL` | `http://127.0.0.1:8081/v1` | Where the model is served |
-| `BACKEND_MODEL` | `local` | Model name sent to the backend |
+| `LLAMA_EMBEDDINGS` | `off` | Set `on` to run a second llama-server for embeddings on the bundled model |
+| `BACKEND_BASE_URL` | `http://127.0.0.1:8081/v1` | Where the model is served for chat |
+| `BACKEND_EMBEDDING_BASE_URL` | `http://127.0.0.1:8082/v1` | Where the model is served for embeddings |
+| `BACKEND_MODEL` | `local` | Model name sent to the backend for chat |
+| `BACKEND_EMBEDDING_MODEL` | `BACKEND_MODEL` | Model name sent to the backend for embeddings |
+| `BACKEND_EMBEDDING_DIMENSIONS` | unset | Output width when a request omits `dimensions`. Must be positive |
 | `BACKEND_TIMEOUT` | `5m` | How long to wait for a completion |
 
 If the context is too small you get a clear `400` naming the token counts, not a silent truncation.
@@ -205,8 +220,8 @@ BACKEND_BASE_URL=http://localhost:11434/v1 BACKEND_MODEL=qwen3:1.7b ./fakerock
 
 ## What it does not do
 
-- **`InvokeModel` and embeddings.** Only the Converse API is implemented. Embedding-backed features
-  such as RAG will not work against this.
+- **`InvokeModel` beyond Titan text embeddings.** Only Titan embeddings are translated; other
+  `InvokeModel` bodies are not implemented.
 - **Documents and video.** Content blocks other than `text`, `image`, `toolUse`, `toolResult` and
   `cachePoint` are rejected with a `400` that names the block. This is deliberate. Dropping an
   uploaded file silently would leave the model answering confidently about something it never saw.

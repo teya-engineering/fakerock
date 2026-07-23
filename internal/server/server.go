@@ -10,19 +10,27 @@ import (
 	"github.com/saltpay/fakerock/internal/openai"
 )
 
-type ChatBackend interface {
+type Backend interface {
 	Chat(ctx context.Context, req openai.ChatRequest) (openai.ChatResponse, error)
+	Embeddings(ctx context.Context, req openai.EmbeddingRequest) (openai.EmbeddingResponse, error)
 }
 
 type Server struct {
-	backend ChatBackend
+	backend             Backend
+	embeddingModel      string
+	embeddingDimensions int
 
 	mu    sync.RWMutex
 	model string
 }
 
-func New(backend ChatBackend, model string) *Server {
-	return &Server{backend: backend, model: model}
+func New(backend Backend, model, embeddingModel string, embeddingDimensions int) *Server {
+	return &Server{
+		backend:             backend,
+		model:               model,
+		embeddingModel:      embeddingModel,
+		embeddingDimensions: embeddingDimensions,
+	}
 }
 
 func (s *Server) currentModel() string {
@@ -51,6 +59,8 @@ func (s *Server) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		s.requirePost(w, r, func() { s.handleConverse(w, r, segments[1]) })
 	case len(segments) == 3 && segments[0] == "model" && segments[2] == "converse-stream":
 		s.requirePost(w, r, func() { s.handleConverseStream(w, r, segments[1]) })
+	case len(segments) == 3 && segments[0] == "model" && segments[2] == "invoke":
+		s.requirePost(w, r, func() { s.handleInvoke(w, r, segments[1]) })
 	case len(segments) == 5 && segments[0] == "guardrail" && segments[2] == "version" && segments[4] == "apply":
 		s.requirePost(w, r, func() { handleApplyGuardrail(w) })
 	case len(segments) == 2 && segments[0] == "admin" && segments[1] == "model":

@@ -13,12 +13,17 @@ import (
 )
 
 type Client struct {
-	baseURL string
-	http    *http.Client
+	baseURL          string
+	embeddingBaseURL string
+	http             *http.Client
 }
 
-func New(baseURL string, timeout time.Duration) *Client {
-	return &Client{baseURL: baseURL, http: &http.Client{Timeout: timeout}}
+func New(baseURL, embeddingBaseURL string, timeout time.Duration) *Client {
+	return &Client{
+		baseURL:          baseURL,
+		embeddingBaseURL: embeddingBaseURL,
+		http:             &http.Client{Timeout: timeout},
+	}
 }
 
 func (c *Client) Chat(ctx context.Context, req openai.ChatRequest) (openai.ChatResponse, error) {
@@ -53,4 +58,38 @@ func (c *Client) Chat(ctx context.Context, req openai.ChatRequest) (openai.ChatR
 		return openai.ChatResponse{}, fmt.Errorf("decoding backend response: %w", err)
 	}
 	return chat, nil
+}
+
+func (c *Client) Embeddings(ctx context.Context, req openai.EmbeddingRequest) (openai.EmbeddingResponse, error) {
+	body, err := json.Marshal(req)
+	if err != nil {
+		return openai.EmbeddingResponse{}, fmt.Errorf("encoding backend request: %w", err)
+	}
+
+	httpReq, err := http.NewRequestWithContext(ctx, http.MethodPost, c.embeddingBaseURL+"/embeddings", bytes.NewReader(body))
+	if err != nil {
+		return openai.EmbeddingResponse{}, fmt.Errorf("building backend request: %w", err)
+	}
+	httpReq.Header.Set("Content-Type", "application/json")
+
+	resp, err := c.http.Do(httpReq)
+	if err != nil {
+		return openai.EmbeddingResponse{}, fmt.Errorf("calling backend: %w", err)
+	}
+	defer resp.Body.Close()
+
+	payload, err := io.ReadAll(resp.Body)
+	if err != nil {
+		return openai.EmbeddingResponse{}, fmt.Errorf("reading backend response: %w", err)
+	}
+
+	if resp.StatusCode != http.StatusOK {
+		return openai.EmbeddingResponse{}, fmt.Errorf("backend returned %d: %s", resp.StatusCode, payload)
+	}
+
+	var embed openai.EmbeddingResponse
+	if err := json.Unmarshal(payload, &embed); err != nil {
+		return openai.EmbeddingResponse{}, fmt.Errorf("decoding backend response: %w", err)
+	}
+	return embed, nil
 }

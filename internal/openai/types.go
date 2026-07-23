@@ -76,3 +76,19 @@ const (
 	FinishReasonLength        = "length"
 	FinishReasonContentFilter = "content_filter"
 )
+
+type EmbeddingRequest struct {
+	Model      string `json:"model"`
+	Input      string `json:"input"`
+	Dimensions *int   `json:"dimensions,omitempty"`
+}
+
+type EmbeddingResponse struct {
+	Data  []EmbeddingData `json:"data"`
+	Usage Usage           `json:"usage"`
+}
+
+type EmbeddingData struct {
+	Embedding []float32 `json:"embedding"`
+	Index     int       `json:"index"`
+}
