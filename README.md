@@ -20,7 +20,10 @@ On a GPU host use the `cuda` tag and tell llama.cpp how many layers to offload:
 docker run --gpus all -e LLAMA_NGL=99 -p 8099:8080 ghcr.io/saltpay/fakerock:cuda
 ```
 
-First start takes about 30 seconds while the model loads. After that:
+First start takes about 30 seconds while the model loads and a one-token warmup completion runs, so
+the first real request does not pay the first-inference setup cost. The API port only opens after
+both, so anything that waits for the port (a TCP readiness probe, `docker run` port checks) waits
+for a model that can actually answer. After that:
 
 ```bash
 AWS_ACCESS_KEY_ID=local AWS_SECRET_ACCESS_KEY=local AWS_REGION=eu-west-1 \
@@ -146,6 +149,8 @@ Defaults as set by the image. The binary on its own defaults to `http://localhos
 | `LLAMA_NGL` | `0` | Layers offloaded to the GPU. Needs a CUDA `BASE_IMAGE` |
 | `LLAMA_REASONING` | `off` | Thinking. Off because Converse has nowhere to carry it |
 | `LLAMA_EMBEDDINGS` | `off` | Set `on` to run a second llama-server for embeddings on the bundled model |
+| `LLAMA_WARMUP` | `on` | Run a one-token completion at startup, before the Bedrock API opens. Set `off` to skip |
+| `LOG_LEVEL` | `info` | Wrapper log level. `debug` logs the full request and response JSON exchanged with the backend |
 | `BACKEND_BASE_URL` | `http://127.0.0.1:8081/v1` | Where the model is served for chat |
 | `BACKEND_EMBEDDING_BASE_URL` | `http://127.0.0.1:8082/v1` | Where the model is served for embeddings |
 | `BACKEND_MODEL` | `local` | Model name sent to the backend for chat |
@@ -154,6 +159,15 @@ Defaults as set by the image. The binary on its own defaults to `http://localhos
 | `BACKEND_TIMEOUT` | `5m` | How long to wait for a completion |
 
 If the context is too small you get a clear `400` naming the token counts, not a silent truncation.
+
+## Seeing what the model was asked
+
+Set `LOG_LEVEL=debug` and every call logs the exact OpenAI-format JSON sent to the backend and the
+raw JSON it returned: the tool list, every message, and the model's reply. That is the first thing
+to look at when the model answers in text where a tool call was expected, since it shows whether the
+tools reached the model and what it actually generated. For llama.cpp's own logs (slot activity,
+prompt processing, timings) set `LLAMA_ARG_LOG_VERBOSITY=5`; llama-server reads it from the
+environment.
 
 ## Using a different model
 

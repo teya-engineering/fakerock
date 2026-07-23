@@ -43,4 +43,22 @@ if [ -n "${embed_pid:-}" ]; then
   wait_for 8082 "${embed_pid}" "embeddings llama-server"
 fi
 
+# Warmup: one tiny completion through the chat template before the Bedrock API opens.
+# It absorbs first-inference setup costs and proves the server can actually generate,
+# so a broken model or template fails here in the logs, not in the first caller.
+# Because fakerock only starts listening afterwards, a TCP readiness probe on the API
+# port waits for the warmup too. Set LLAMA_WARMUP=off to skip it.
+if [ "${LLAMA_WARMUP:-on}" = "on" ]; then
+  echo "warmup: sending a one-token completion"
+  warmup_start=$(date +%s)
+  if curl -sS -X POST "http://127.0.0.1:8081/v1/chat/completions" \
+      -H "Content-Type: application/json" \
+      -d '{"model":"warmup","messages":[{"role":"user","content":"hi"}],"max_tokens":1}' \
+      -o /dev/null; then
+    echo "warmup: done in $(( $(date +%s) - warmup_start ))s"
+  else
+    echo "warmup: request failed, starting anyway" >&2
+  fi
+fi
+
 exec /usr/local/bin/fakerock
