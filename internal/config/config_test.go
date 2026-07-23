@@ -1,6 +1,9 @@
 package config
 
-import "testing"
+import (
+	"log/slog"
+	"testing"
+)
 
 func TestLoadEmbeddingDimensions(t *testing.T) {
 	tests := []struct {
@@ -31,6 +34,39 @@ func TestLoadEmbeddingDimensions(t *testing.T) {
 			}
 			if cfg.EmbeddingDimensions != tt.want {
 				t.Errorf("EmbeddingDimensions = %d, want %d", cfg.EmbeddingDimensions, tt.want)
+			}
+		})
+	}
+}
+
+func TestLoadLogLevel(t *testing.T) {
+	tests := []struct {
+		name    string
+		value   string
+		want    slog.Level
+		wantErr bool
+	}{
+		{"unset defaults to info", "", slog.LevelInfo, false},
+		{"debug", "debug", slog.LevelDebug, false},
+		{"uppercase", "WARN", slog.LevelWarn, false},
+		{"garbage is rejected", "loud", 0, true},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Setenv("LOG_LEVEL", tt.value)
+
+			cfg, err := Load()
+			if tt.wantErr {
+				if err == nil {
+					t.Fatalf("expected an error for value %q", tt.value)
+				}
+				return
+			}
+			if err != nil {
+				t.Fatalf("unexpected error: %v", err)
+			}
+			if cfg.LogLevel != tt.want {
+				t.Errorf("LogLevel = %v, want %v", cfg.LogLevel, tt.want)
 			}
 		})
 	}
