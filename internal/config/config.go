@@ -3,6 +3,7 @@ package config
 import (
 	"fmt"
 	"os"
+	"strconv"
 	"strings"
 	"time"
 )
@@ -15,10 +16,13 @@ const (
 )
 
 type Config struct {
-	Addr           string
-	BackendBaseURL string
-	BackendTimeout time.Duration
-	Model          string
+	Addr                string
+	BackendBaseURL      string
+	EmbeddingBaseURL    string
+	BackendTimeout      time.Duration
+	Model               string
+	EmbeddingModel      string
+	EmbeddingDimensions int
 }
 
 func Load() (Config, error) {
@@ -31,11 +35,30 @@ func Load() (Config, error) {
 		timeout = parsed
 	}
 
+	model := valueOr(os.Getenv("BACKEND_MODEL"), defaultModel)
+
+	dimensions := 0
+	if raw := os.Getenv("BACKEND_EMBEDDING_DIMENSIONS"); raw != "" {
+		parsed, err := strconv.Atoi(raw)
+		if err != nil {
+			return Config{}, fmt.Errorf("BACKEND_EMBEDDING_DIMENSIONS: %w", err)
+		}
+		if parsed <= 0 {
+			return Config{}, fmt.Errorf("BACKEND_EMBEDDING_DIMENSIONS must be positive, got %d", parsed)
+		}
+		dimensions = parsed
+	}
+
+	backendBaseURL := strings.TrimSuffix(valueOr(os.Getenv("BACKEND_BASE_URL"), defaultBackendBaseURL), "/")
+
 	return Config{
-		Addr:           valueOr(os.Getenv("LISTEN_ADDR"), defaultAddr),
-		BackendBaseURL: strings.TrimSuffix(valueOr(os.Getenv("BACKEND_BASE_URL"), defaultBackendBaseURL), "/"),
-		BackendTimeout: timeout,
-		Model:          valueOr(os.Getenv("BACKEND_MODEL"), defaultModel),
+		Addr:                valueOr(os.Getenv("LISTEN_ADDR"), defaultAddr),
+		BackendBaseURL:      backendBaseURL,
+		EmbeddingBaseURL:    strings.TrimSuffix(valueOr(os.Getenv("BACKEND_EMBEDDING_BASE_URL"), backendBaseURL), "/"),
+		BackendTimeout:      timeout,
+		Model:               model,
+		EmbeddingModel:      valueOr(os.Getenv("BACKEND_EMBEDDING_MODEL"), model),
+		EmbeddingDimensions: dimensions,
 	}, nil
 }
 

@@ -37,10 +37,12 @@ COPY --from=model /tmp/model.gguf /models/model.gguf
 
 ENV LISTEN_ADDR=:8080 \
     BACKEND_BASE_URL=http://127.0.0.1:8081/v1 \
+    BACKEND_EMBEDDING_BASE_URL=http://127.0.0.1:8082/v1 \
     BACKEND_MODEL=local \
     LLAMA_CTX=32768 \
     LLAMA_NGL=0 \
-    LLAMA_REASONING=off
+    LLAMA_REASONING=off \
+    LLAMA_EMBEDDINGS=off
 
 EXPOSE 8080
 
