@@ -117,6 +117,12 @@ a tool, so agent loops run to completion.
 `cachePoint` and `guardrailConfig` are accepted and ignored. Token counts are real numbers from the
 backend. Cache token counts are always zero.
 
+`image` blocks (`png`, `jpeg`, `gif`, `webp`) are translated to OpenAI `image_url` parts, but only
+produce a real answer when `BACKEND_MODEL` points at a vision-capable model (e.g. `llama3.2-vision`
+or an ollama `*-vl`). The bundled Qwen3 1.7B is text-only. fakerock only translates; whatever the
+backend says comes straight back, so a text-only model returns its own `400` ("does not support
+image input") and a subscription-gated one returns `403`: surfaced loud, never swallowed.
+
 ## Environment variables
 
 Defaults as set by the image. The binary on its own defaults to `http://localhost:11434/v1` and
@@ -148,6 +154,19 @@ docker build --build-arg MODEL_URL=<url to a .gguf> -t fakerock .
 
 Any GGUF works, but it must have a chat template that supports tools, otherwise tool calls never
 come back.
+
+## Switching model at runtime
+
+`BACKEND_MODEL` sets the boot default. To swap the target model without recreating the container,
+POST to `/admin/model`:
+
+```bash
+curl -s localhost:8080/admin/model -d '{"model":"llama3.2-vision"}'
+curl -s localhost:8080/admin/model   # read the current value
+```
+
+The next Converse request uses the new model. The swap holds until the next swap or a restart. An
+empty or missing `model` returns a `400`.
 
 ## Building behind a restricted network
 
@@ -188,7 +207,7 @@ BACKEND_BASE_URL=http://localhost:11434/v1 BACKEND_MODEL=qwen3:1.7b ./fakerock
 
 - **`InvokeModel` and embeddings.** Only the Converse API is implemented. Embedding-backed features
   such as RAG will not work against this.
-- **Images and documents.** Content blocks other than `text`, `toolUse`, `toolResult` and
+- **Documents and video.** Content blocks other than `text`, `image`, `toolUse`, `toolResult` and
   `cachePoint` are rejected with a `400` that names the block. This is deliberate. Dropping an
   uploaded file silently would leave the model answering confidently about something it never saw.
 - **Guardrails.** The endpoint exists so guardrail-wrapped clients keep working. It enforces nothing.

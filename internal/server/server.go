@@ -5,6 +5,7 @@ import (
 	"net/http"
 	"net/url"
 	"strings"
+	"sync"
 
 	"github.com/saltpay/fakerock/internal/openai"
 )
@@ -15,11 +16,25 @@ type ChatBackend interface {
 
 type Server struct {
 	backend ChatBackend
-	model   string
+
+	mu    sync.RWMutex
+	model string
 }
 
 func New(backend ChatBackend, model string) *Server {
 	return &Server{backend: backend, model: model}
+}
+
+func (s *Server) currentModel() string {
+	s.mu.RLock()
+	defer s.mu.RUnlock()
+	return s.model
+}
+
+func (s *Server) setModel(model string) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	s.model = model
 }
 
 // Routing is done by hand because model ids are often inference-profile ARNs, which
@@ -38,6 +53,8 @@ func (s *Server) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		s.requirePost(w, r, func() { s.handleConverseStream(w, r, segments[1]) })
 	case len(segments) == 5 && segments[0] == "guardrail" && segments[2] == "version" && segments[4] == "apply":
 		s.requirePost(w, r, func() { handleApplyGuardrail(w) })
+	case len(segments) == 2 && segments[0] == "admin" && segments[1] == "model":
+		s.handleAdminModel(w, r)
 	default:
 		writeError(w, http.StatusNotFound, errNotFound, "unknown operation: "+r.URL.Path)
 	}
