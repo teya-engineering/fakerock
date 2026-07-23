@@ -217,13 +217,12 @@ func assertAWSError(t *testing.T, rec *httptest.ResponseRecorder, status int, co
 	}
 }
 
-// A file upload arrives as an image or document block. Dropping it would leave the model
-// answering confidently about content it never received, so the request must fail instead.
+// An untranslatable block (document, video) would leave the model answering confidently
+// about content it never received, so the request must fail instead of dropping the block.
 func TestConverseRejectsUnsupportedContentBlocks(t *testing.T) {
 	srv := newTestServer(t, &stubBackend{})
 
 	for _, block := range []string{
-		`{"image":{"format":"png","source":{"bytes":"aGk="}}}`,
 		`{"document":{"format":"pdf","name":"invoice","source":{"bytes":"aGk="}}}`,
 		`{"video":{"format":"mp4","source":{"bytes":"aGk="}}}`,
 	} {

@@ -21,26 +21,27 @@ func (s *Server) handleConverse(w http.ResponseWriter, r *http.Request, modelID 
 		return
 	}
 
-	chatReq, err := translate.ToOpenAI(s.model, req)
+	model := s.currentModel()
+	chatReq, err := translate.ToOpenAI(model, req)
 	if err != nil {
 		writeError(w, http.StatusBadRequest, errValidation, err.Error())
 		return
 	}
 
-	slog.Info("converse", "modelId", modelID, "model", s.model,
+	slog.Info("converse", "modelId", modelID, "model", model,
 		"messages", len(chatReq.Messages), "tools", len(chatReq.Tools))
 
 	start := time.Now()
 	chatResp, err := s.backend.Chat(r.Context(), chatReq)
 	if err != nil {
-		slog.Error("backend call failed", "model", s.model, "err", err)
+		slog.Error("backend call failed", "model", model, "err", err)
 		writeError(w, http.StatusBadGateway, errModel, err.Error())
 		return
 	}
 
 	resp, err := translate.FromOpenAI(chatResp, time.Since(start))
 	if err != nil {
-		slog.Error("translating backend response failed", "model", s.model, "err", err)
+		slog.Error("translating backend response failed", "model", model, "err", err)
 		writeError(w, http.StatusBadGateway, errModel, err.Error())
 		return
 	}

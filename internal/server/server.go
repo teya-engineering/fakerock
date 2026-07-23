@@ -5,6 +5,7 @@ import (
 	"net/http"
 	"net/url"
 	"strings"
+	"sync"
 
 	"github.com/saltpay/fakerock/internal/openai"
 )
@@ -16,9 +17,11 @@ type Backend interface {
 
 type Server struct {
 	backend             Backend
-	model               string
 	embeddingModel      string
 	embeddingDimensions int
+
+	mu    sync.RWMutex
+	model string
 }
 
 func New(backend Backend, model, embeddingModel string, embeddingDimensions int) *Server {
@@ -28,6 +31,18 @@ func New(backend Backend, model, embeddingModel string, embeddingDimensions int)
 		embeddingModel:      embeddingModel,
 		embeddingDimensions: embeddingDimensions,
 	}
+}
+
+func (s *Server) currentModel() string {
+	s.mu.RLock()
+	defer s.mu.RUnlock()
+	return s.model
+}
+
+func (s *Server) setModel(model string) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	s.model = model
 }
 
 // Routing is done by hand because model ids are often inference-profile ARNs, which
@@ -48,6 +63,8 @@ func (s *Server) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		s.requirePost(w, r, func() { s.handleInvoke(w, r, segments[1]) })
 	case len(segments) == 5 && segments[0] == "guardrail" && segments[2] == "version" && segments[4] == "apply":
 		s.requirePost(w, r, func() { handleApplyGuardrail(w) })
+	case len(segments) == 2 && segments[0] == "admin" && segments[1] == "model":
+		s.handleAdminModel(w, r)
 	default:
 		writeError(w, http.StatusNotFound, errNotFound, "unknown operation: "+r.URL.Path)
 	}

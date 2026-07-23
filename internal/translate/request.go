@@ -2,6 +2,7 @@ package translate
 
 import (
 	"bytes"
+	"encoding/base64"
 	"encoding/json"
 	"fmt"
 	"strings"
@@ -61,6 +62,7 @@ func ToOpenAI(model string, req bedrock.ConverseRequest) (openai.ChatRequest, er
 func convertMessage(m bedrock.Message) ([]openai.Message, error) {
 	var out []openai.Message
 	var texts []string
+	var images []bedrock.ImageBlock
 	var calls []openai.ToolCall
 
 	for _, c := range m.Content {
@@ -87,18 +89,41 @@ func convertMessage(m bedrock.Message) ([]openai.Message, error) {
 			})
 		case c.Text != nil:
 			texts = append(texts, *c.Text)
+		case c.Image != nil:
+			images = append(images, *c.Image)
 		}
 	}
 
-	if len(texts) > 0 || len(calls) > 0 {
+	if len(texts) > 0 || len(images) > 0 || len(calls) > 0 {
 		out = append(out, openai.Message{
 			Role:      m.Role,
-			Content:   strings.Join(texts, "\n"),
+			Content:   messageContent(texts, images),
 			ToolCalls: calls,
 		})
 	}
 
 	return out, nil
+}
+
+// messageContent returns a plain string when there are no images, the multimodal
+// []ContentPart array when images are present, and nil when neither exists so json
+// omits the field on tool-call-only messages.
+func messageContent(texts []string, images []bedrock.ImageBlock) any {
+	if len(images) > 0 {
+		parts := make([]openai.ContentPart, 0, len(texts)+len(images))
+		for _, t := range texts {
+			parts = append(parts, openai.ContentPart{Type: "text", Text: t})
+		}
+		for _, img := range images {
+			url := fmt.Sprintf("data:image/%s;base64,%s", img.Format, base64.StdEncoding.EncodeToString(img.Source.Bytes))
+			parts = append(parts, openai.ContentPart{Type: "image_url", ImageURL: &openai.ImageURL{URL: url}})
+		}
+		return parts
+	}
+	if len(texts) > 0 {
+		return strings.Join(texts, "\n")
+	}
+	return nil
 }
 
 func toolResultContent(r bedrock.ToolResult) (string, error) {

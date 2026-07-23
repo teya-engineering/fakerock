@@ -20,12 +20,22 @@ type Message struct {
 
 type ContentBlock struct {
 	Text       *string     `json:"text,omitempty"`
+	Image      *ImageBlock `json:"image,omitempty"`
 	ToolUse    *ToolUse    `json:"toolUse,omitempty"`
 	ToolResult *ToolResult `json:"toolResult,omitempty"`
 	CachePoint *CachePoint `json:"cachePoint,omitempty"`
 }
 
-// Converse keeps growing block kinds (image, document, video, reasoningContent). Anything we
+type ImageBlock struct {
+	Format string      `json:"format"`
+	Source ImageSource `json:"source"`
+}
+
+type ImageSource struct {
+	Bytes []byte `json:"bytes"` // encoding/json base64-decodes a JSON string into []byte
+}
+
+// Converse keeps growing block kinds (document, video, reasoningContent). Anything we
 // cannot translate is rejected rather than dropped, so an unsupported block surfaces as a failed
 // request instead of a confident answer about content the model never received.
 func (b *ContentBlock) UnmarshalJSON(data []byte) error {
@@ -33,7 +43,7 @@ func (b *ContentBlock) UnmarshalJSON(data []byte) error {
 	if err := json.Unmarshal(data, (*contentBlock)(b)); err != nil {
 		return err
 	}
-	return rejectUnknownKeys(data, "content block", "text", "toolUse", "toolResult", "cachePoint")
+	return rejectUnknownKeys(data, "content block", "text", "image", "toolUse", "toolResult", "cachePoint")
 }
 
 type SystemBlock struct {
