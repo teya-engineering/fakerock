@@ -47,7 +47,7 @@ func (c *Client) Chat(ctx context.Context, req openai.ChatRequest) (openai.ChatR
 	if err != nil {
 		return openai.ChatResponse{}, fmt.Errorf("calling backend: %w", err)
 	}
-	defer resp.Body.Close()
+	defer func() { _ = resp.Body.Close() }()
 
 	payload, err := io.ReadAll(resp.Body)
 	if err != nil {
@@ -82,7 +82,7 @@ func (c *Client) Embeddings(ctx context.Context, req openai.EmbeddingRequest) (o
 	if err != nil {
 		return openai.EmbeddingResponse{}, fmt.Errorf("calling backend: %w", err)
 	}
-	defer resp.Body.Close()
+	defer func() { _ = resp.Body.Close() }()
 
 	payload, err := io.ReadAll(resp.Body)
 	if err != nil {
