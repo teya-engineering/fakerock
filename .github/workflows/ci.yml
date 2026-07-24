@@ -15,6 +15,11 @@ jobs:
         with:
           go-version-file: go.mod
 
+      - name: Lint
+        uses: golangci/golangci-lint-action@v7
+        with:
+          version: v2.12.2
+
       - run: go vet ./...
       - run: go test ./...
 
