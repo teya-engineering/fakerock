@@ -1,23 +1,15 @@
 #!/bin/bash
 set -euo pipefail
 
-_lib="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)/entrypoint_lib.sh"
-# shellcheck source=entrypoint_lib.sh
-source "$_lib"
-
-# The bundled chat llama-server exists only to back the default BACKEND_BASE_URL. Pointing chat at
-# an external backend - host ollama, a shared endpoint - makes that server dead weight: it still
-# loads the model and a full KV cache, and with LLAMA_NGL=0 that sits in host RAM. Start it only
-# when it is what the wrapper routes to. Embeddings stay on LLAMA_EMBEDDINGS=on/off alone.
-
 chat_pid=""
 embed_pid=""
 
 trap 'kill "${chat_pid:-}" "${embed_pid:-}" 2>/dev/null || true' TERM INT
 
 # Chat server. --jinja is what makes tool calling work; without it llama.cpp ignores the tool
-# definitions and the agent loop ends after one turn with no error.
-if chat_uses_bundled; then
+# definitions and the agent loop ends after one turn with no error. Set LLAMA_CHAT=off to skip it
+# when BACKEND_BASE_URL points elsewhere (host Ollama, a shared endpoint).
+if [ "${LLAMA_CHAT:-on}" = "on" ]; then
   /app/llama-server \
     --model /models/model.gguf \
     --jinja \
@@ -28,7 +20,7 @@ if chat_uses_bundled; then
     --n-gpu-layers "${LLAMA_NGL}" &
   chat_pid=$!
 else
-  echo "chat: serving ${BACKEND_BASE_URL}, bundled llama-server not started"
+  echo "chat: LLAMA_CHAT=off, bundled llama-server not started"
 fi
 
 wait_for() {
@@ -66,8 +58,7 @@ fi
 # so a broken model or template fails here in the logs, not in the first caller.
 # Because fakerock only starts listening afterwards, a TCP readiness probe on the API
 # port waits for the warmup too. Set LLAMA_WARMUP=off to skip it.
-# Only the bundled server is warmed: an external backend owns its own model lifecycle, and the
-# placeholder model id below does not resolve there.
+# Only the bundled server is warmed when LLAMA_CHAT=on.
 if [ -n "${chat_pid}" ] && [ "${LLAMA_WARMUP:-on}" = "on" ]; then
   echo "warmup: sending a one-token completion"
   warmup_start=$(date +%s)

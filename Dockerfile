@@ -42,13 +42,14 @@ ENV LISTEN_ADDR=:8080 \
     LLAMA_CTX=32768 \
     LLAMA_NGL=0 \
     LLAMA_REASONING=off \
+    LLAMA_CHAT=on \
     LLAMA_EMBEDDINGS=off \
     LLAMA_WARMUP=on \
     LOG_LEVEL=info
 
 EXPOSE 8080
 
-COPY entrypoint.sh entrypoint_lib.sh /usr/local/bin/
+COPY entrypoint.sh /usr/local/bin/
 RUN chmod +x /usr/local/bin/entrypoint.sh
 
 ENTRYPOINT ["/usr/local/bin/entrypoint.sh"]

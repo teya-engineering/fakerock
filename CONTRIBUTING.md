@@ -134,11 +134,11 @@ re-normalised to unit length.
 ## The Image
 
 `Dockerfile` builds the wrapper, downloads the model in a separate stage, and lands both on a
-llama.cpp base. `entrypoint.sh` starts the bundled chat llama-server only when `BACKEND_BASE_URL`
-still points at it, starts the embeddings server when `LLAMA_EMBEDDINGS=on`, waits for those that
-did start, runs a one-token warmup on the chat server when it is local, then execs fakerock. The
-Bedrock port only opens after all of that, so a TCP readiness probe (or `GET /health` on the listen
-address) waits for a model that can actually answer when the bundled chat path is in use.
+llama.cpp base. `entrypoint.sh` starts the bundled chat llama-server when `LLAMA_CHAT=on`, starts
+the embeddings server when `LLAMA_EMBEDDINGS=on`, waits for those that did start, runs a one-token
+warmup on the chat server when it is local, then execs fakerock. The Bedrock port only opens after
+all of that, so a TCP readiness probe (or `GET /health` on the listen address) waits for a model
+that can actually answer when the bundled chat path is in use.
 
 Every source is a build argument (`GO_IMAGE`, `CURL_IMAGE`, `BASE_IMAGE`, `MODEL_URL`) so a build
 with no internet access can point each one at a mirror.
@@ -168,7 +168,7 @@ For llama.cpp's own logs (slot activity, prompt processing, timings) set
 
 ```bash
 go test ./...          # all tests
-./entrypoint_test.sh   # bundled-backend URL matching in entrypoint_lib.sh
+./entrypoint_test.sh   # LLAMA_CHAT flag gating in entrypoint.sh
 go vet ./...           # static analysis
 go test -race ./...    # the server holds mutable state, so races matter
 ```

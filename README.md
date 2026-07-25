@@ -137,10 +137,10 @@ The bundled model is a chat model, so it embeds but not well; point `BACKEND_EMB
 `BACKEND_EMBEDDING_MODEL` at a real embedding backend (for example Ollama with an embedding model)
 when retrieval quality matters.
 
-The bundled chat llama-server starts only when `BACKEND_BASE_URL` points at it (`127.0.0.1` /
-`localhost` / `[::1]` on 8081). Pointing chat at an external backend skips that process and its KV
-cache. Embeddings stay gated by `LLAMA_EMBEDDINGS` alone. Probe readiness on `GET /health` on the
-Bedrock listen address, not a llama-server port, so the check stays valid either way.
+The bundled chat llama-server starts when `LLAMA_CHAT=on` (the default). Set `LLAMA_CHAT=off` to
+skip it when `BACKEND_BASE_URL` points elsewhere. Embeddings stay gated by `LLAMA_EMBEDDINGS`
+alone. Probe readiness on `GET /health` on the Bedrock listen address, not a llama-server port, so
+the check stays valid either way.
 
 ## Environment variables
 
@@ -153,10 +153,11 @@ Defaults as set by the image. The binary on its own defaults to `http://localhos
 | `LLAMA_CTX` | `32768` | Context size. A prompt with 19 tools can reach 19k tokens |
 | `LLAMA_NGL` | `0` | Layers offloaded to the GPU. Needs a CUDA `BASE_IMAGE` |
 | `LLAMA_REASONING` | `off` | Thinking. Off because Converse has nowhere to carry it |
+| `LLAMA_CHAT` | `on` | Set `off` to skip the bundled chat llama-server |
 | `LLAMA_EMBEDDINGS` | `off` | Set `on` to run a second llama-server for embeddings on the bundled model |
 | `LLAMA_WARMUP` | `on` | Run a one-token completion at startup, before the Bedrock API opens. Set `off` to skip |
 | `LOG_LEVEL` | `info` | Wrapper log level. `debug` logs the full request and response JSON exchanged with the backend |
-| `BACKEND_BASE_URL` | `http://127.0.0.1:8081/v1` | Where the model is served for chat. Bundled chat llama-server starts only when this points at `127.0.0.1:8081` / `localhost:8081` / `[::1]:8081` |
+| `BACKEND_BASE_URL` | `http://127.0.0.1:8081/v1` | Where the model is served for chat |
 | `BACKEND_EMBEDDING_BASE_URL` | `http://127.0.0.1:8082/v1` | Where the model is served for embeddings |
 | `BACKEND_MODEL` | `local` | Model name sent to the backend for chat |
 | `BACKEND_EMBEDDING_MODEL` | `BACKEND_MODEL` | Model name sent to the backend for embeddings |
@@ -230,13 +231,13 @@ anyway, which looks configured and performs like it isn't.
 ## Using your own model server
 
 To use an existing Ollama or llama.cpp instead of the bundled one, point `BACKEND_BASE_URL` at any
-OpenAI-compatible `/v1/chat/completions` endpoint. With the image, the bundled chat llama-server is
-then skipped:
+OpenAI-compatible `/v1/chat/completions` endpoint and set `LLAMA_CHAT=off`:
 
 ```bash
 docker run -p 8099:8080 \
   -e BACKEND_BASE_URL=http://host.docker.internal:11434/v1 \
   -e BACKEND_MODEL=qwen3:1.7b \
+  -e LLAMA_CHAT=off \
   ghcr.io/saltpay/fakerock:cpu
 ```
 
