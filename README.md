@@ -137,9 +137,9 @@ The bundled model is a chat model, so it embeds but not well; point `BACKEND_EMB
 `BACKEND_EMBEDDING_MODEL` at a real embedding backend (for example Ollama with an embedding model)
 when retrieval quality matters.
 
-Each bundled llama-server starts only when the matching `BACKEND_*_BASE_URL` points at it
-(`127.0.0.1` / `localhost` / `[::1]` on 8081 for chat, 8082 for embeddings). Pointing either at an
-external backend skips that process and its KV cache. Probe readiness on `GET /health` on the
+The bundled chat llama-server starts only when `BACKEND_BASE_URL` points at it (`127.0.0.1` /
+`localhost` / `[::1]` on 8081). Pointing chat at an external backend skips that process and its KV
+cache. Embeddings stay gated by `LLAMA_EMBEDDINGS` alone. Probe readiness on `GET /health` on the
 Bedrock listen address, not a llama-server port, so the check stays valid either way.
 
 ## Environment variables
@@ -157,7 +157,7 @@ Defaults as set by the image. The binary on its own defaults to `http://localhos
 | `LLAMA_WARMUP` | `on` | Run a one-token completion at startup, before the Bedrock API opens. Set `off` to skip |
 | `LOG_LEVEL` | `info` | Wrapper log level. `debug` logs the full request and response JSON exchanged with the backend |
 | `BACKEND_BASE_URL` | `http://127.0.0.1:8081/v1` | Where the model is served for chat. Bundled chat llama-server starts only when this points at `127.0.0.1:8081` / `localhost:8081` / `[::1]:8081` |
-| `BACKEND_EMBEDDING_BASE_URL` | `http://127.0.0.1:8082/v1` | Where the model is served for embeddings. Bundled embeddings llama-server starts only when this points at port 8082 on loopback (and `LLAMA_EMBEDDINGS=on`) |
+| `BACKEND_EMBEDDING_BASE_URL` | `http://127.0.0.1:8082/v1` | Where the model is served for embeddings |
 | `BACKEND_MODEL` | `local` | Model name sent to the backend for chat |
 | `BACKEND_EMBEDDING_MODEL` | `BACKEND_MODEL` | Model name sent to the backend for embeddings |
 | `BACKEND_EMBEDDING_DIMENSIONS` | unset | Output width when a request omits `dimensions`. Must be positive |

@@ -5,10 +5,10 @@ _lib="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)/entrypoint_lib.sh"
 # shellcheck source=entrypoint_lib.sh
 source "$_lib"
 
-# The bundled llama-servers exist only to back the default BACKEND_BASE_URL and
-# BACKEND_EMBEDDING_BASE_URL. Pointing either at an external backend - host ollama, a shared
-# endpoint - makes that server dead weight: it still loads the model and a full KV cache, and with
-# LLAMA_NGL=0 that sits in host RAM. Start each one only when it is what the wrapper routes to.
+# The bundled chat llama-server exists only to back the default BACKEND_BASE_URL. Pointing chat at
+# an external backend - host ollama, a shared endpoint - makes that server dead weight: it still
+# loads the model and a full KV cache, and with LLAMA_NGL=0 that sits in host RAM. Start it only
+# when it is what the wrapper routes to. Embeddings stay on LLAMA_EMBEDDINGS=on/off alone.
 
 chat_pid=""
 embed_pid=""
@@ -43,19 +43,15 @@ wait_for() {
 # Embeddings are off by default: they load the bundled model a second time (llama-server runs in
 # chat or embedding mode per process, not both). Set LLAMA_EMBEDDINGS=on to serve /v1/embeddings.
 if [ "${LLAMA_EMBEDDINGS:-off}" = "on" ]; then
-  if embed_uses_bundled; then
-    /app/llama-server \
-      --model /models/model.gguf \
-      --embeddings \
-      --pooling mean \
-      --host 127.0.0.1 \
-      --port 8082 \
-      --ctx-size "${LLAMA_CTX}" \
-      --n-gpu-layers "${LLAMA_NGL}" &
-    embed_pid=$!
-  else
-    echo "embeddings: serving ${BACKEND_EMBEDDING_BASE_URL:-unset}, bundled llama-server not started"
-  fi
+  /app/llama-server \
+    --model /models/model.gguf \
+    --embeddings \
+    --pooling mean \
+    --host 127.0.0.1 \
+    --port 8082 \
+    --ctx-size "${LLAMA_CTX}" \
+    --n-gpu-layers "${LLAMA_NGL}" &
+  embed_pid=$!
 fi
 
 if [ -n "${chat_pid}" ]; then

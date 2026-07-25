@@ -11,7 +11,3 @@ serves_bundled() {
 chat_uses_bundled() {
   serves_bundled "${BACKEND_BASE_URL:-}" 8081
 }
-
-embed_uses_bundled() {
-  serves_bundled "${BACKEND_EMBEDDING_BASE_URL:-}" 8082
-}
