@@ -137,6 +137,11 @@ The bundled model is a chat model, so it embeds but not well; point `BACKEND_EMB
 `BACKEND_EMBEDDING_MODEL` at a real embedding backend (for example Ollama with an embedding model)
 when retrieval quality matters.
 
+Each bundled llama-server starts only when the matching `BACKEND_*_BASE_URL` points at it
+(`127.0.0.1` / `localhost` / `[::1]` on 8081 for chat, 8082 for embeddings). Pointing either at an
+external backend skips that process and its KV cache. Probe readiness on `GET /health` on the
+Bedrock listen address — not on a llama-server port — so the check stays valid either way.
+
 ## Environment variables
 
 Defaults as set by the image. The binary on its own defaults to `http://localhost:11434/v1` and
@@ -151,8 +156,8 @@ Defaults as set by the image. The binary on its own defaults to `http://localhos
 | `LLAMA_EMBEDDINGS` | `off` | Set `on` to run a second llama-server for embeddings on the bundled model |
 | `LLAMA_WARMUP` | `on` | Run a one-token completion at startup, before the Bedrock API opens. Set `off` to skip |
 | `LOG_LEVEL` | `info` | Wrapper log level. `debug` logs the full request and response JSON exchanged with the backend |
-| `BACKEND_BASE_URL` | `http://127.0.0.1:8081/v1` | Where the model is served for chat |
-| `BACKEND_EMBEDDING_BASE_URL` | `http://127.0.0.1:8082/v1` | Where the model is served for embeddings |
+| `BACKEND_BASE_URL` | `http://127.0.0.1:8081/v1` | Where the model is served for chat. Bundled chat llama-server starts only when this points at `127.0.0.1:8081` / `localhost:8081` / `[::1]:8081` |
+| `BACKEND_EMBEDDING_BASE_URL` | `http://127.0.0.1:8082/v1` | Where the model is served for embeddings. Bundled embeddings llama-server starts only when this points at port 8082 on loopback (and `LLAMA_EMBEDDINGS=on`) |
 | `BACKEND_MODEL` | `local` | Model name sent to the backend for chat |
 | `BACKEND_EMBEDDING_MODEL` | `BACKEND_MODEL` | Model name sent to the backend for embeddings |
 | `BACKEND_EMBEDDING_DIMENSIONS` | unset | Output width when a request omits `dimensions`. Must be positive |
@@ -224,8 +229,18 @@ anyway, which looks configured and performs like it isn't.
 
 ## Using your own model server
 
-To use an existing Ollama or llama.cpp instead of the bundled one, run the binary on its own and
-point it at any OpenAI-compatible `/v1/chat/completions` endpoint:
+To use an existing Ollama or llama.cpp instead of the bundled one, point `BACKEND_BASE_URL` at any
+OpenAI-compatible `/v1/chat/completions` endpoint. With the image, the bundled chat llama-server is
+then skipped:
+
+```bash
+docker run -p 8099:8080 \
+  -e BACKEND_BASE_URL=http://host.docker.internal:11434/v1 \
+  -e BACKEND_MODEL=qwen3:1.7b \
+  ghcr.io/saltpay/fakerock:cpu
+```
+
+Or run the binary on its own:
 
 ```bash
 go build -o fakerock ./cmd/fakerock

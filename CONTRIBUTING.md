@@ -73,6 +73,7 @@ the route stops matching.
 
 | Path | Handler |
 |---|---|
+| `GET /health` | `health.go` (wrapper is serving; probe this, not a llama-server port) |
 | `POST /model/{id}/converse` | `converse.go` |
 | `POST /model/{id}/converse-stream` | `stream.go` |
 | `POST /model/{id}/invoke` | `invoke.go` (Titan text embeddings only) |
@@ -133,9 +134,11 @@ re-normalised to unit length.
 ## The Image
 
 `Dockerfile` builds the wrapper, downloads the model in a separate stage, and lands both on a
-llama.cpp base. `entrypoint.sh` starts llama-server, waits for health, runs a one-token warmup, then
-execs fakerock. The Bedrock port only opens after all of that, so a TCP readiness probe waits for a
-model that can actually answer.
+llama.cpp base. `entrypoint.sh` starts each bundled llama-server only when the matching
+`BACKEND_*_BASE_URL` still points at it, waits for those that did start, runs a one-token warmup on
+the chat server when it is local, then execs fakerock. The Bedrock port only opens after all of
+that, so a TCP readiness probe — or `GET /health` on the listen address — waits for a model that
+can actually answer when the bundled path is in use.
 
 Every source is a build argument (`GO_IMAGE`, `CURL_IMAGE`, `BASE_IMAGE`, `MODEL_URL`) so a build
 with no internet access can point each one at a mirror.

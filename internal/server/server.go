@@ -55,6 +55,8 @@ func (s *Server) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	}
 
 	switch {
+	case len(segments) == 1 && segments[0] == "health":
+		s.handleHealth(w, r)
 	case len(segments) == 3 && segments[0] == "model" && segments[2] == "converse":
 		s.requirePost(w, r, func() { s.handleConverse(w, r, segments[1]) })
 	case len(segments) == 3 && segments[0] == "model" && segments[2] == "converse-stream":
