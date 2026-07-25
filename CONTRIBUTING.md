@@ -137,7 +137,7 @@ re-normalised to unit length.
 llama.cpp base. `entrypoint.sh` starts each bundled llama-server only when the matching
 `BACKEND_*_BASE_URL` still points at it, waits for those that did start, runs a one-token warmup on
 the chat server when it is local, then execs fakerock. The Bedrock port only opens after all of
-that, so a TCP readiness probe — or `GET /health` on the listen address — waits for a model that
+that, so a TCP readiness probe (or `GET /health` on the listen address) waits for a model that
 can actually answer when the bundled path is in use.
 
 Every source is a build argument (`GO_IMAGE`, `CURL_IMAGE`, `BASE_IMAGE`, `MODEL_URL`) so a build

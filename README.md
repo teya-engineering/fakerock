@@ -140,7 +140,7 @@ when retrieval quality matters.
 Each bundled llama-server starts only when the matching `BACKEND_*_BASE_URL` points at it
 (`127.0.0.1` / `localhost` / `[::1]` on 8081 for chat, 8082 for embeddings). Pointing either at an
 external backend skips that process and its KV cache. Probe readiness on `GET /health` on the
-Bedrock listen address — not on a llama-server port — so the check stays valid either way.
+Bedrock listen address, not a llama-server port, so the check stays valid either way.
 
 ## Environment variables
 
