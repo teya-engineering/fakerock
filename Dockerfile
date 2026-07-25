@@ -48,7 +48,7 @@ ENV LISTEN_ADDR=:8080 \
 
 EXPOSE 8080
 
-COPY entrypoint.sh /usr/local/bin/entrypoint.sh
+COPY entrypoint.sh entrypoint_lib.sh /usr/local/bin/
 RUN chmod +x /usr/local/bin/entrypoint.sh
 
 ENTRYPOINT ["/usr/local/bin/entrypoint.sh"]

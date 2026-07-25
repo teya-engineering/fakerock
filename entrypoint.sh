@@ -1,16 +1,14 @@
 #!/bin/bash
 set -euo pipefail
 
+_lib="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)/entrypoint_lib.sh"
+# shellcheck source=entrypoint_lib.sh
+source "$_lib"
+
 # The bundled llama-servers exist only to back the default BACKEND_BASE_URL and
 # BACKEND_EMBEDDING_BASE_URL. Pointing either at an external backend - host ollama, a shared
 # endpoint - makes that server dead weight: it still loads the model and a full KV cache, and with
 # LLAMA_NGL=0 that sits in host RAM. Start each one only when it is what the wrapper routes to.
-serves_bundled() {
-  case "$1/" in
-    *://127.0.0.1:"$2"/*|*://localhost:"$2"/*|*://\[::1\]:"$2"/*) return 0 ;;
-    *) return 1 ;;
-  esac
-}
 
 chat_pid=""
 embed_pid=""
@@ -19,7 +17,7 @@ trap 'kill "${chat_pid:-}" "${embed_pid:-}" 2>/dev/null || true' TERM INT
 
 # Chat server. --jinja is what makes tool calling work; without it llama.cpp ignores the tool
 # definitions and the agent loop ends after one turn with no error.
-if serves_bundled "${BACKEND_BASE_URL}" 8081; then
+if chat_uses_bundled; then
   /app/llama-server \
     --model /models/model.gguf \
     --jinja \
@@ -45,7 +43,7 @@ wait_for() {
 # Embeddings are off by default: they load the bundled model a second time (llama-server runs in
 # chat or embedding mode per process, not both). Set LLAMA_EMBEDDINGS=on to serve /v1/embeddings.
 if [ "${LLAMA_EMBEDDINGS:-off}" = "on" ]; then
-  if serves_bundled "${BACKEND_EMBEDDING_BASE_URL:-}" 8082; then
+  if embed_uses_bundled; then
     /app/llama-server \
       --model /models/model.gguf \
       --embeddings \

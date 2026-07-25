@@ -5,6 +5,7 @@ build:
 
 test:
 	go test ./...
+	./entrypoint_test.sh
 
 vet:
 	go vet ./...

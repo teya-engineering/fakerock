@@ -73,7 +73,7 @@ the route stops matching.
 
 | Path | Handler |
 |---|---|
-| `GET /health` | `health.go` (wrapper is serving; probe this, not a llama-server port) |
+| `GET /health` | `health.go`|
 | `POST /model/{id}/converse` | `converse.go` |
 | `POST /model/{id}/converse-stream` | `stream.go` |
 | `POST /model/{id}/invoke` | `invoke.go` (Titan text embeddings only) |
@@ -168,6 +168,7 @@ For llama.cpp's own logs (slot activity, prompt processing, timings) set
 
 ```bash
 go test ./...          # all tests
+./entrypoint_test.sh   # bundled-backend URL matching in entrypoint_lib.sh
 go vet ./...           # static analysis
 go test -race ./...    # the server holds mutable state, so races matter
 ```
