@@ -21,6 +21,11 @@ type stubBackend struct {
 	gotEmbed  openai.EmbeddingRequest
 	embedResp openai.EmbeddingResponse
 	embedErr  error
+	pingErr   error
+}
+
+func (s *stubBackend) Ping(context.Context) error {
+	return s.pingErr
 }
 
 func (s *stubBackend) Chat(_ context.Context, req openai.ChatRequest) (openai.ChatResponse, error) {

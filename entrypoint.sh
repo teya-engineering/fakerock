@@ -58,13 +58,14 @@ fi
 # so a broken model or template fails here in the logs, not in the first caller.
 # Because fakerock only starts listening afterwards, a TCP readiness probe on the API
 # port waits for the warmup too. Set LLAMA_WARMUP=off to skip it.
-# Only the bundled server is warmed when LLAMA_CHAT=on.
-if [ -n "${chat_pid}" ] && [ "${LLAMA_WARMUP:-on}" = "on" ]; then
-  echo "warmup: sending a one-token completion"
+# It follows BACKEND_BASE_URL, so an external backend is warmed and checked the same way
+# the bundled one is. Ollama loads models on first use, so this is where that cost lands.
+if [ "${LLAMA_WARMUP:-on}" = "on" ]; then
+  echo "warmup: sending a one-token completion to ${BACKEND_BASE_URL}"
   warmup_start=$(date +%s)
-  if curl -sS -X POST "http://127.0.0.1:8081/v1/chat/completions" \
+  if curl -sSf -X POST "${BACKEND_BASE_URL%/}/chat/completions" \
       -H "Content-Type: application/json" \
-      -d '{"model":"warmup","messages":[{"role":"user","content":"hi"}],"max_tokens":1}' \
+      -d "{\"model\":\"${BACKEND_MODEL}\",\"messages\":[{\"role\":\"user\",\"content\":\"hi\"}],\"max_tokens\":1}" \
       -o /dev/null; then
     echo "warmup: done in $(( $(date +%s) - warmup_start ))s"
   else

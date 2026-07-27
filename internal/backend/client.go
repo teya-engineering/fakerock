@@ -66,6 +66,29 @@ func (c *Client) Chat(ctx context.Context, req openai.ChatRequest) (openai.ChatR
 	return chat, nil
 }
 
+// Ping asks the backend for its model list. /v1/models is the only path both llama.cpp and Ollama
+// serve, and it runs no inference, so a health check can call it per probe without competing with
+// real requests for a slot. It proves the backend is reachable and answering, not that BACKEND_MODEL
+// is usable: Ollama lists every installed model, and llama.cpp reports its own model path.
+func (c *Client) Ping(ctx context.Context) error {
+	httpReq, err := http.NewRequestWithContext(ctx, http.MethodGet, c.baseURL+"/models", nil)
+	if err != nil {
+		return fmt.Errorf("building backend request: %w", err)
+	}
+
+	resp, err := c.http.Do(httpReq)
+	if err != nil {
+		return fmt.Errorf("calling backend: %w", err)
+	}
+	defer func() { _ = resp.Body.Close() }()
+
+	if resp.StatusCode != http.StatusOK {
+		payload, _ := io.ReadAll(io.LimitReader(resp.Body, 512))
+		return fmt.Errorf("backend returned %d: %s", resp.StatusCode, payload)
+	}
+	return nil
+}
+
 func (c *Client) Embeddings(ctx context.Context, req openai.EmbeddingRequest) (openai.EmbeddingResponse, error) {
 	body, err := json.Marshal(req)
 	if err != nil {

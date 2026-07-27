@@ -13,6 +13,7 @@ import (
 type Backend interface {
 	Chat(ctx context.Context, req openai.ChatRequest) (openai.ChatResponse, error)
 	Embeddings(ctx context.Context, req openai.EmbeddingRequest) (openai.EmbeddingResponse, error)
+	Ping(ctx context.Context) error
 }
 
 type Server struct {

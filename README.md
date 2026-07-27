@@ -138,9 +138,12 @@ The bundled model is a chat model, so it embeds but not well; point `BACKEND_EMB
 when retrieval quality matters.
 
 The bundled chat llama-server starts when `LLAMA_CHAT=on` (the default). Set `LLAMA_CHAT=off` to
-skip it when `BACKEND_BASE_URL` points elsewhere. Embeddings stay gated by `LLAMA_EMBEDDINGS`
-alone. Probe readiness on `GET /health` on the Bedrock listen address, not a llama-server port, so
-the check stays valid either way.
+skip it when `BACKEND_BASE_URL` points elsewhere.
+
+`GET /health` on the Bedrock listen address returns `200` and the current model when the backend
+answers, and `503` with the reason when it does not. It calls the backend's `/v1/models` on every
+request, which runs no inference, so a backend that dies an hour after startup flips the check.
+Probe this rather than a llama-server port, which may never open.
 
 ## Environment variables
 
