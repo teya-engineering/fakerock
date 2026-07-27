@@ -1,19 +1,27 @@
 #!/bin/bash
 set -euo pipefail
 
-# Chat server. --jinja is what makes tool calling work; without it llama.cpp ignores the tool
-# definitions and the agent loop ends after one turn with no error.
-/app/llama-server \
-  --model /models/model.gguf \
-  --jinja \
-  --reasoning "${LLAMA_REASONING}" \
-  --host 127.0.0.1 \
-  --port 8081 \
-  --ctx-size "${LLAMA_CTX}" \
-  --n-gpu-layers "${LLAMA_NGL}" &
-chat_pid=$!
+chat_pid=""
+embed_pid=""
 
-trap 'kill "${chat_pid}" "${embed_pid:-}" 2>/dev/null || true' TERM INT
+trap 'kill "${chat_pid:-}" "${embed_pid:-}" 2>/dev/null || true' TERM INT
+
+# Chat server. --jinja is what makes tool calling work; without it llama.cpp ignores the tool
+# definitions and the agent loop ends after one turn with no error. Set LLAMA_CHAT=off to skip it
+# when BACKEND_BASE_URL points elsewhere (host Ollama, a shared endpoint).
+if [ "${LLAMA_CHAT:-on}" = "on" ]; then
+  /app/llama-server \
+    --model /models/model.gguf \
+    --jinja \
+    --reasoning "${LLAMA_REASONING}" \
+    --host 127.0.0.1 \
+    --port 8081 \
+    --ctx-size "${LLAMA_CTX}" \
+    --n-gpu-layers "${LLAMA_NGL}" &
+  chat_pid=$!
+else
+  echo "chat: LLAMA_CHAT=off, bundled llama-server not started"
+fi
 
 wait_for() {
   local port=$1 pid=$2 name=$3
@@ -38,8 +46,10 @@ if [ "${LLAMA_EMBEDDINGS:-off}" = "on" ]; then
   embed_pid=$!
 fi
 
-wait_for 8081 "${chat_pid}" "chat llama-server"
-if [ -n "${embed_pid:-}" ]; then
+if [ -n "${chat_pid}" ]; then
+  wait_for 8081 "${chat_pid}" "chat llama-server"
+fi
+if [ -n "${embed_pid}" ]; then
   wait_for 8082 "${embed_pid}" "embeddings llama-server"
 fi
 
@@ -48,12 +58,14 @@ fi
 # so a broken model or template fails here in the logs, not in the first caller.
 # Because fakerock only starts listening afterwards, a TCP readiness probe on the API
 # port waits for the warmup too. Set LLAMA_WARMUP=off to skip it.
+# It follows BACKEND_BASE_URL, so an external backend is warmed and checked the same way
+# the bundled one is. Ollama loads models on first use, so this is where that cost lands.
 if [ "${LLAMA_WARMUP:-on}" = "on" ]; then
-  echo "warmup: sending a one-token completion"
+  echo "warmup: sending a one-token completion to ${BACKEND_BASE_URL}"
   warmup_start=$(date +%s)
-  if curl -sS -X POST "http://127.0.0.1:8081/v1/chat/completions" \
+  if curl -sSf -X POST "${BACKEND_BASE_URL%/}/chat/completions" \
       -H "Content-Type: application/json" \
-      -d '{"model":"warmup","messages":[{"role":"user","content":"hi"}],"max_tokens":1}' \
+      -d "{\"model\":\"${BACKEND_MODEL}\",\"messages\":[{\"role\":\"user\",\"content\":\"hi\"}],\"max_tokens\":1}" \
       -o /dev/null; then
     echo "warmup: done in $(( $(date +%s) - warmup_start ))s"
   else

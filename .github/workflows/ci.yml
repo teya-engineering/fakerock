@@ -22,6 +22,7 @@ jobs:
 
       - run: go vet ./...
       - run: go test ./...
+      - run: shellcheck entrypoint.sh
 
       # The image is the product, so a broken Dockerfile should fail the pull request.
       - name: Build the image
