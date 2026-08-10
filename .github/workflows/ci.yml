@@ -26,7 +26,7 @@ jobs:
 
       # The image is the product, so a broken Dockerfile should fail the pull request.
       - name: Build the image
-        uses: docker/build-push-action@v6
+        uses: docker/build-push-action@v7
         with:
           context: .
           push: false
