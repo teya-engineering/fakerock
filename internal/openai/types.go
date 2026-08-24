@@ -3,14 +3,28 @@ package openai
 import "encoding/json"
 
 type ChatRequest struct {
-	Model       string    `json:"model"`
-	Messages    []Message `json:"messages"`
-	Tools       []Tool    `json:"tools,omitempty"`
-	Stream      bool      `json:"stream"`
-	MaxTokens   *int      `json:"max_tokens,omitempty"`
-	Temperature *float64  `json:"temperature,omitempty"`
-	TopP        *float64  `json:"top_p,omitempty"`
-	Stop        []string  `json:"stop,omitempty"`
+	Model          string          `json:"model"`
+	Messages       []Message       `json:"messages"`
+	Tools          []Tool          `json:"tools,omitempty"`
+	Stream         bool            `json:"stream"`
+	MaxTokens      *int            `json:"max_tokens,omitempty"`
+	Temperature    *float64        `json:"temperature,omitempty"`
+	TopP           *float64        `json:"top_p,omitempty"`
+	Stop           []string        `json:"stop,omitempty"`
+	ResponseFormat *ResponseFormat `json:"response_format,omitempty"`
+}
+
+type ResponseFormat struct {
+	Type       string                    `json:"type"`
+	JSONSchema *ResponseFormatJSONSchema `json:"json_schema,omitempty"`
+}
+
+// ResponseFormatJSONSchema matches OpenAI's structured-output shape: the schema is
+// inlined as an object (not a string) and strict=true asks the backend to enforce it.
+type ResponseFormatJSONSchema struct {
+	Name   string          `json:"name"`
+	Schema json.RawMessage `json:"schema"`
+	Strict bool            `json:"strict,omitempty"`
 }
 
 // Content is a plain string or a []ContentPart for multimodal messages. With any,

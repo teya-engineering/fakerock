@@ -228,3 +228,120 @@ func TestToOpenAIRejectsUnnamedTool(t *testing.T) {
 		t.Fatal("expected an error for a tool spec without a name")
 	}
 }
+
+func TestToOpenAIOutputConfigJSONSchema(t *testing.T) {
+	// Bedrock's JsonSchemaDefinition.schema is a String — the SDK escapes the actual
+	// JSON schema tree into a JSON string. OpenAI's response_format.json_schema.schema
+	// wants the tree inline as an object, so translation has to unwrap the string.
+	const schema = `{"type":"object","properties":{"verdict":{"type":"string","enum":["TP","FP"]}},"required":["verdict"],"additionalProperties":false}`
+	req := bedrock.ConverseRequest{
+		Messages: []bedrock.Message{{Role: "user", Content: []bedrock.ContentBlock{{Text: text("hi")}}}},
+		OutputConfig: &bedrock.OutputConfig{
+			TextFormat: &bedrock.TextFormat{
+				Type: "json_schema",
+				Structure: &bedrock.TextFormatStructure{
+					JSONSchema: &bedrock.JSONSchemaDefinition{
+						Schema: schema,
+						Name:   "MatchVerdict",
+					},
+				},
+			},
+		},
+	}
+
+	got, err := ToOpenAI("qwen3", req)
+	if err != nil {
+		t.Fatalf("ToOpenAI: %v", err)
+	}
+	if got.ResponseFormat == nil {
+		t.Fatal("response_format is nil, want json_schema")
+	}
+	if got.ResponseFormat.Type != "json_schema" {
+		t.Errorf("response_format.type = %q, want json_schema", got.ResponseFormat.Type)
+	}
+	if got.ResponseFormat.JSONSchema == nil {
+		t.Fatal("response_format.json_schema is nil")
+	}
+	if got.ResponseFormat.JSONSchema.Name != "MatchVerdict" {
+		t.Errorf("json_schema.name = %q, want MatchVerdict", got.ResponseFormat.JSONSchema.Name)
+	}
+	if !got.ResponseFormat.JSONSchema.Strict {
+		t.Error("json_schema.strict = false, want true (structured output must be enforced)")
+	}
+	// Schema must be the parsed tree, not the escaped string. Round-trip through a compact
+	// buffer so the assertion is insensitive to key ordering / whitespace differences.
+	var gotSchema, wantSchema bytes.Buffer
+	if err := json.Compact(&gotSchema, got.ResponseFormat.JSONSchema.Schema); err != nil {
+		t.Fatalf("json_schema.schema is not valid JSON: %v (%s)", err, got.ResponseFormat.JSONSchema.Schema)
+	}
+	if err := json.Compact(&wantSchema, []byte(schema)); err != nil {
+		t.Fatal(err)
+	}
+	if gotSchema.String() != wantSchema.String() {
+		t.Errorf("json_schema.schema = %s, want %s", gotSchema.String(), wantSchema.String())
+	}
+}
+
+func TestToOpenAIOutputConfigTextIsNoOp(t *testing.T) {
+	// type=text (or absent) is Bedrock's default — the model runs unconstrained. It must
+	// not synthesise a response_format, otherwise callers who never asked for structured
+	// output would suddenly get JSON-only replies.
+	for _, typ := range []string{"", "text"} {
+		req := bedrock.ConverseRequest{
+			Messages: []bedrock.Message{{Role: "user", Content: []bedrock.ContentBlock{{Text: text("hi")}}}},
+			OutputConfig: &bedrock.OutputConfig{
+				TextFormat: &bedrock.TextFormat{Type: typ},
+			},
+		}
+		got, err := ToOpenAI("qwen3", req)
+		if err != nil {
+			t.Fatalf("type=%q: ToOpenAI: %v", typ, err)
+		}
+		if got.ResponseFormat != nil {
+			t.Errorf("type=%q: response_format = %+v, want nil", typ, got.ResponseFormat)
+		}
+	}
+}
+
+func TestToOpenAIOutputConfigRejectsMissingSchema(t *testing.T) {
+	// Silent drop would leave the model answering unconstrained while the caller
+	// believes structured output is enforced (Invariant #5).
+	req := bedrock.ConverseRequest{
+		Messages: []bedrock.Message{{Role: "user", Content: []bedrock.ContentBlock{{Text: text("hi")}}}},
+		OutputConfig: &bedrock.OutputConfig{
+			TextFormat: &bedrock.TextFormat{Type: "json_schema"},
+		},
+	}
+	if _, err := ToOpenAI("qwen3", req); err == nil {
+		t.Fatal("expected an error when json_schema type has no schema")
+	}
+}
+
+func TestToOpenAIOutputConfigRejectsInvalidSchemaJSON(t *testing.T) {
+	req := bedrock.ConverseRequest{
+		Messages: []bedrock.Message{{Role: "user", Content: []bedrock.ContentBlock{{Text: text("hi")}}}},
+		OutputConfig: &bedrock.OutputConfig{
+			TextFormat: &bedrock.TextFormat{
+				Type: "json_schema",
+				Structure: &bedrock.TextFormatStructure{
+					JSONSchema: &bedrock.JSONSchemaDefinition{Schema: "{not valid"},
+				},
+			},
+		},
+	}
+	if _, err := ToOpenAI("qwen3", req); err == nil {
+		t.Fatal("expected an error for malformed schema JSON")
+	}
+}
+
+func TestToOpenAIOutputConfigRejectsUnknownType(t *testing.T) {
+	req := bedrock.ConverseRequest{
+		Messages: []bedrock.Message{{Role: "user", Content: []bedrock.ContentBlock{{Text: text("hi")}}}},
+		OutputConfig: &bedrock.OutputConfig{
+			TextFormat: &bedrock.TextFormat{Type: "yaml_schema"},
+		},
+	}
+	if _, err := ToOpenAI("qwen3", req); err == nil {
+		t.Fatal("expected an error for an unknown textFormat type")
+	}
+}

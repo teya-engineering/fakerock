@@ -118,6 +118,10 @@ Tool calling works in both directions: `toolConfig` reaches the model, `toolUse`
 and `toolResult` blocks are fed in on the next turn. `stopReason` is `tool_use` when the model calls
 a tool, so agent loops run to completion.
 
+`outputConfig.textFormat` with `type: json_schema` is translated to OpenAI's `response_format`,
+so structured-output requests are enforced by the backend (Ollama, llama.cpp) instead of being
+silently dropped. `type: text` (Bedrock's default) stays a no-op; anything else returns `400`.
+
 `cachePoint` and `guardrailConfig` are accepted and ignored. Token counts are real numbers from the
 backend. Cache token counts are always zero.
 

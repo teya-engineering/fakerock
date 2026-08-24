@@ -11,6 +11,7 @@ type ConverseRequest struct {
 	System          []SystemBlock    `json:"system"`
 	InferenceConfig *InferenceConfig `json:"inferenceConfig"`
 	ToolConfig      *ToolConfig      `json:"toolConfig"`
+	OutputConfig    *OutputConfig    `json:"outputConfig,omitempty"`
 }
 
 type Message struct {
@@ -98,6 +99,28 @@ type InferenceConfig struct {
 	Temperature   *float64 `json:"temperature,omitempty"`
 	TopP          *float64 `json:"topP,omitempty"`
 	StopSequences []string `json:"stopSequences,omitempty"`
+}
+
+type OutputConfig struct {
+	TextFormat *TextFormat `json:"textFormat,omitempty"`
+}
+
+type TextFormat struct {
+	Type      string               `json:"type"`
+	Structure *TextFormatStructure `json:"structure,omitempty"`
+}
+
+type TextFormatStructure struct {
+	JSONSchema *JSONSchemaDefinition `json:"jsonSchema,omitempty"`
+}
+
+// JSONSchemaDefinition mirrors the AWS SDK's shape: schema arrives as an escaped JSON
+// string (not an inline object), and the optional name/description are metadata the
+// SDK ships alongside it.
+type JSONSchemaDefinition struct {
+	Schema      string `json:"schema"`
+	Name        string `json:"name,omitempty"`
+	Description string `json:"description,omitempty"`
 }
 
 type ToolConfig struct {

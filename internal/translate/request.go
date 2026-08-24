@@ -54,7 +54,52 @@ func ToOpenAI(model string, req bedrock.ConverseRequest) (openai.ChatRequest, er
 		out.Stop = c.StopSequences
 	}
 
+	if oc := req.OutputConfig; oc != nil && oc.TextFormat != nil {
+		rf, err := translateOutputFormat(oc.TextFormat)
+		if err != nil {
+			return openai.ChatRequest{}, err
+		}
+		out.ResponseFormat = rf
+	}
+
 	return out, nil
+}
+
+// translateOutputFormat converts Bedrock's outputConfig.textFormat into OpenAI's
+// response_format. type=text (or absent) is Bedrock's default and stays a no-op so
+// callers who never asked for structured output are not silently forced onto it.
+// Anything else fails loudly rather than passing an unenforced schema to the model.
+func translateOutputFormat(tf *bedrock.TextFormat) (*openai.ResponseFormat, error) {
+	switch tf.Type {
+	case "", "text":
+		return nil, nil
+	case "json_schema":
+		if tf.Structure == nil || tf.Structure.JSONSchema == nil || tf.Structure.JSONSchema.Schema == "" {
+			return nil, fmt.Errorf("outputConfig.textFormat.structure.jsonSchema.schema is required when type is json_schema")
+		}
+		// Bedrock delivers the schema as an escaped JSON string; OpenAI wants the tree
+		// inline as an object. json.RawMessage lets it pass through unquoted, but we
+		// validate first so a malformed schema surfaces as a 400 (Invariant #5) instead
+		// of a downstream backend parse error.
+		schema := tf.Structure.JSONSchema.Schema
+		if !json.Valid([]byte(schema)) {
+			return nil, fmt.Errorf("outputConfig.textFormat.structure.jsonSchema.schema is not valid JSON")
+		}
+		name := tf.Structure.JSONSchema.Name
+		if name == "" {
+			name = "response"
+		}
+		return &openai.ResponseFormat{
+			Type: "json_schema",
+			JSONSchema: &openai.ResponseFormatJSONSchema{
+				Name:   name,
+				Schema: json.RawMessage(schema),
+				Strict: true,
+			},
+		}, nil
+	default:
+		return nil, fmt.Errorf("outputConfig.textFormat.type %q not supported", tf.Type)
+	}
 }
 
 // Tool results become their own messages so they land directly after the assistant
