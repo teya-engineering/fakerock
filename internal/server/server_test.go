@@ -7,6 +7,8 @@ import (
 	"net/http"
 	"net/http/httptest"
 	"net/url"
+	"reflect"
+	"strconv"
 	"strings"
 	"testing"
 
@@ -219,6 +221,90 @@ func assertAWSError(t *testing.T, rec *httptest.ResponseRecorder, status int, co
 	}
 	if body["__type"] != code || body["message"] == "" {
 		t.Errorf("error body = %+v", body)
+	}
+}
+
+// End-to-end coverage that outputConfig.textFormat.jsonSchema survives HTTP parsing
+// and reaches the backend as OpenAI response_format. Without this the schema is
+// silently dropped at the Amazon SDK boundary and the model answers with unconstrained text.
+func TestConverseForwardsOutputConfigAsResponseFormat(t *testing.T) {
+	backend := &stubBackend{resp: openai.ChatResponse{
+		Choices: []openai.Choice{{
+			Message:      openai.Message{Role: "assistant", Content: `{"answer":42}`},
+			FinishReason: openai.FinishReasonStop,
+		}},
+	}}
+	srv := newTestServer(t, backend)
+
+	schema := `{"type":"object","properties":{"answer":{"type":"integer"}},"required":["answer"]}`
+	body := `{
+      "messages":[{"role":"user","content":[{"text":"hi"}]}],
+      "outputConfig":{"textFormat":{"type":"json_schema","structure":{"jsonSchema":{
+        "name":"Answer",
+        "schema":` + strconv.Quote(schema) + `
+      }}}}
+    }`
+
+	rec := post(t, srv, "/model/sonnet/converse", body)
+
+	if rec.Code != http.StatusOK {
+		t.Fatalf("status = %d, body = %s", rec.Code, rec.Body)
+	}
+	rf := backend.got.ResponseFormat
+	if rf == nil {
+		t.Fatal("backend request had no response_format — outputConfig was dropped")
+	}
+	if rf.Type != "json_schema" {
+		t.Errorf("response_format.type = %q, want json_schema", rf.Type)
+	}
+	if rf.JSONSchema == nil {
+		t.Fatal("response_format.json_schema is nil")
+	}
+	if rf.JSONSchema.Name != "Answer" {
+		t.Errorf("json_schema.name = %q, want Answer", rf.JSONSchema.Name)
+	}
+	if !rf.JSONSchema.Strict {
+		t.Error("json_schema.strict = false, want true so the backend enforces the schema")
+	}
+	// The schema arrived as an escaped JSON string on the wire; it must be inlined as
+	// a JSON object in the OpenAI request, not re-quoted. Compare parsed trees so
+	// whitespace differences don't matter.
+	var got, want any
+	if err := json.Unmarshal(rf.JSONSchema.Schema, &got); err != nil {
+		t.Fatalf("json_schema.schema is not valid JSON: %v", err)
+	}
+	if err := json.Unmarshal([]byte(schema), &want); err != nil {
+		t.Fatalf("expected schema is not valid JSON: %v", err)
+	}
+	if !reflect.DeepEqual(got, want) {
+		t.Errorf("json_schema.schema = %v, want %v", got, want)
+	}
+}
+
+// Bedrock's default outputConfig.textFormat.type is "text"; forwarding a synthetic
+// response_format for that case would silently force JSON on callers who never asked
+// for it. Absent outputConfig should behave the same as an explicit "text" type.
+func TestConverseTextOutputConfigDoesNotSetResponseFormat(t *testing.T) {
+	for name, body := range map[string]string{
+		"absent": `{"messages":[{"role":"user","content":[{"text":"hi"}]}]}`,
+		"explicit_text": `{"messages":[{"role":"user","content":[{"text":"hi"}]}],` +
+			`"outputConfig":{"textFormat":{"type":"text"}}}`,
+	} {
+		t.Run(name, func(t *testing.T) {
+			backend := &stubBackend{resp: openai.ChatResponse{
+				Choices: []openai.Choice{{Message: openai.Message{Content: "ok"}, FinishReason: openai.FinishReasonStop}},
+			}}
+			srv := newTestServer(t, backend)
+
+			rec := post(t, srv, "/model/sonnet/converse", body)
+
+			if rec.Code != http.StatusOK {
+				t.Fatalf("status = %d, body = %s", rec.Code, rec.Body)
+			}
+			if backend.got.ResponseFormat != nil {
+				t.Errorf("response_format = %+v, want nil for text output", backend.got.ResponseFormat)
+			}
+		})
 	}
 }
 
