@@ -7,6 +7,7 @@ import (
 	"strings"
 	"sync"
 
+	"github.com/saltpay/fakerock/internal/backend"
 	"github.com/saltpay/fakerock/internal/openai"
 )
 
@@ -50,6 +51,10 @@ func (s *Server) setModel(model string) {
 // Routing is done by hand because model ids are often inference-profile ARNs, which
 // carry slashes and reach us percent-encoded inside a single path segment.
 func (s *Server) ServeHTTP(w http.ResponseWriter, r *http.Request) {
+	if token, ok := bearerToken(r.Header.Get("Authorization")); ok {
+		r = r.WithContext(backend.WithBearerToken(r.Context(), token))
+	}
+
 	segments, err := pathSegments(r.URL.EscapedPath())
 	if err != nil {
 		writeError(w, http.StatusBadRequest, errValidation, err.Error())
@@ -80,6 +85,17 @@ func (s *Server) requirePost(w http.ResponseWriter, r *http.Request, handle func
 		return
 	}
 	handle()
+}
+
+// bearerToken returns the token from an "Authorization: Bearer <token>" header. AWS SDKs send one
+// when a Bedrock API key is configured, and the backend gets the same token. An AWS signature is
+// not a bearer and is never passed on.
+func bearerToken(header string) (string, bool) {
+	scheme, token, found := strings.Cut(header, " ")
+	if !found || !strings.EqualFold(scheme, "Bearer") || token == "" {
+		return "", false
+	}
+	return token, true
 }
 
 func pathSegments(escapedPath string) ([]string, error) {

@@ -21,7 +21,7 @@ func main() {
 
 	srv := &http.Server{
 		Addr:              cfg.Addr,
-		Handler:           server.New(backend.New(cfg.BackendBaseURL, cfg.EmbeddingBaseURL, cfg.BackendAPIKey, cfg.BackendTimeout), cfg.Model, cfg.EmbeddingModel, cfg.EmbeddingDimensions),
+		Handler:           server.New(backend.New(cfg.BackendBaseURL, cfg.EmbeddingBaseURL, cfg.BackendTimeout), cfg.Model, cfg.EmbeddingModel, cfg.EmbeddingDimensions),
 		ReadHeaderTimeout: 10 * time.Second,
 	}
 

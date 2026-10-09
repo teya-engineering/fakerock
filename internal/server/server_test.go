@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
+	"io"
 	"net/http"
 	"net/http/httptest"
 	"net/url"
@@ -11,7 +12,9 @@ import (
 	"strconv"
 	"strings"
 	"testing"
+	"time"
 
+	"github.com/saltpay/fakerock/internal/backend"
 	"github.com/saltpay/fakerock/internal/bedrock"
 	"github.com/saltpay/fakerock/internal/openai"
 )
@@ -370,5 +373,54 @@ func TestConverseRejectsUnsupportedContentBlocks(t *testing.T) {
 		rec := post(t, srv, "/model/sonnet/converse", body)
 
 		assertAWSError(t, rec, http.StatusBadRequest, errValidation)
+	}
+}
+
+func TestCallerBearerTokenReachesTheBackend(t *testing.T) {
+	operations := []struct{ name, path, body string }{
+		{"converse", "/model/m/converse", `{"messages":[{"role":"user","content":[{"text":"hi"}]}]}`},
+		{"converse-stream", "/model/m/converse-stream", `{"messages":[{"role":"user","content":[{"text":"hi"}]}]}`},
+		{"invoke", "/model/amazon.titan-embed-text-v2:0/invoke", `{"inputText":"hi"}`},
+	}
+	headers := []struct{ name, sent, want string }{
+		{"bearer", "Bearer abc", "Bearer abc"},
+		{"aws signature", "AWS4-HMAC-SHA256 Credential=x/20261009/eu-west-1/bedrock/aws4_request", ""},
+		{"none", "", ""},
+	}
+
+	for _, op := range operations {
+		for _, header := range headers {
+			t.Run(op.name+" "+header.name, func(t *testing.T) {
+				var gotAuth string
+				fake := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+					gotAuth = r.Header.Get("Authorization")
+					raw, _ := io.ReadAll(r.Body)
+					switch {
+					case r.URL.Path == "/embeddings":
+						_, _ = io.WriteString(w, `{"data":[{"embedding":[0.1]}]}`)
+					case strings.Contains(string(raw), `"stream":true`):
+						_, _ = io.WriteString(w, `data: {"choices":[{"delta":{"content":"hi"},"finish_reason":"stop"}]}`+"\n\n"+"data: [DONE]\n\n")
+					default:
+						_, _ = io.WriteString(w, `{"choices":[{"message":{"role":"assistant","content":"hi"},"finish_reason":"stop"}]}`)
+					}
+				}))
+				t.Cleanup(fake.Close)
+				srv := New(backend.New(fake.URL, fake.URL, 5*time.Second), "m", "e", 0)
+
+				req := httptest.NewRequest(http.MethodPost, op.path, strings.NewReader(op.body))
+				if header.sent != "" {
+					req.Header.Set("Authorization", header.sent)
+				}
+				rec := httptest.NewRecorder()
+				srv.ServeHTTP(rec, req)
+
+				if rec.Code != http.StatusOK {
+					t.Fatalf("status = %d: %s", rec.Code, rec.Body)
+				}
+				if gotAuth != header.want {
+					t.Errorf("backend Authorization = %q, want %q", gotAuth, header.want)
+				}
+			})
+		}
 	}
 }

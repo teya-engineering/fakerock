@@ -19,17 +19,13 @@ import (
 type Client struct {
 	baseURL          string
 	embeddingBaseURL string
-	apiKey           string
 	http             *http.Client
 }
 
-// New builds a backend client. An empty apiKey sends no Authorization header, which is what a
-// local llama.cpp or Ollama expects.
-func New(baseURL, embeddingBaseURL, apiKey string, timeout time.Duration) *Client {
+func New(baseURL, embeddingBaseURL string, timeout time.Duration) *Client {
 	return &Client{
 		baseURL:          baseURL,
 		embeddingBaseURL: embeddingBaseURL,
-		apiKey:           apiKey,
 		http:             &http.Client{Timeout: timeout},
 	}
 }
@@ -122,7 +118,7 @@ func (c *Client) postChat(ctx context.Context, req openai.ChatRequest) (*http.Re
 		return nil, fmt.Errorf("building backend request: %w", err)
 	}
 	httpReq.Header.Set("Content-Type", "application/json")
-	c.authorize(httpReq)
+	authorize(httpReq)
 
 	resp, err := c.http.Do(httpReq)
 	if err != nil {
@@ -140,7 +136,7 @@ func (c *Client) Ping(ctx context.Context) error {
 	if err != nil {
 		return fmt.Errorf("building backend request: %w", err)
 	}
-	c.authorize(httpReq)
+	authorize(httpReq)
 
 	resp, err := c.http.Do(httpReq)
 	if err != nil {
@@ -166,7 +162,7 @@ func (c *Client) Embeddings(ctx context.Context, req openai.EmbeddingRequest) (o
 		return openai.EmbeddingResponse{}, fmt.Errorf("building backend request: %w", err)
 	}
 	httpReq.Header.Set("Content-Type", "application/json")
-	c.authorize(httpReq)
+	authorize(httpReq)
 
 	resp, err := c.http.Do(httpReq)
 	if err != nil {
@@ -190,8 +186,15 @@ func (c *Client) Embeddings(ctx context.Context, req openai.EmbeddingRequest) (o
 	return embed, nil
 }
 
-func (c *Client) authorize(req *http.Request) {
-	if c.apiKey != "" {
-		req.Header.Set("Authorization", "Bearer "+c.apiKey)
+type bearerTokenKey struct{}
+
+// WithBearerToken returns a context whose backend calls carry "Authorization: Bearer <token>".
+func WithBearerToken(ctx context.Context, token string) context.Context {
+	return context.WithValue(ctx, bearerTokenKey{}, token)
+}
+
+func authorize(req *http.Request) {
+	if token, _ := req.Context().Value(bearerTokenKey{}).(string); token != "" {
+		req.Header.Set("Authorization", "Bearer "+token)
 	}
 }

@@ -171,7 +171,6 @@ Defaults as set by the image. The binary on its own defaults to `http://localhos
 | `LLAMA_WARMUP` | `on` | Run a one-token completion at startup, before the Bedrock API opens. Set `off` to skip |
 | `LOG_LEVEL` | `info` | Wrapper log level. `debug` logs the full request and response JSON exchanged with the backend |
 | `BACKEND_BASE_URL` | `http://127.0.0.1:8081/v1` | Where the model is served for chat |
-| `BACKEND_API_KEY` | unset | Sent as `Authorization: Bearer <key>` on every backend request, chat and embeddings |
 | `BACKEND_EMBEDDING_BASE_URL` | `http://127.0.0.1:8082/v1` | Where the model is served for embeddings |
 | `BACKEND_MODEL` | `local` | Model name sent to the backend for chat |
 | `BACKEND_EMBEDDING_MODEL` | `BACKEND_MODEL` | Model name sent to the backend for embeddings |
@@ -262,8 +261,8 @@ go build -o fakerock ./cmd/fakerock
 BACKEND_BASE_URL=http://localhost:11434/v1 BACKEND_MODEL=qwen3:1.7b ./fakerock
 ```
 
-If the endpoint needs a key, set `BACKEND_API_KEY` and it is sent as a bearer token on every backend
-request.
+A bearer token the caller sends (for example through `AWS_BEARER_TOKEN_BEDROCK`) is passed on to the
+backend, so an endpoint that needs a key gets the caller's.
 
 ## What it does not do
 
