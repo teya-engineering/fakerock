@@ -36,7 +36,7 @@ func sseServer(t *testing.T, status int, body string, gotBody *map[string]any) *
 
 func collect(t *testing.T, srv *httptest.Server) ([]openai.ChatChunk, error) {
 	t.Helper()
-	client := New(srv.URL, srv.URL, 5*time.Second)
+	client := New(srv.URL, srv.URL, "", 5*time.Second)
 	var chunks []openai.ChatChunk
 	err := client.ChatStream(context.Background(), openai.ChatRequest{Model: "m"}, func(chunk openai.ChatChunk) error {
 		chunks = append(chunks, chunk)
@@ -107,7 +107,7 @@ func TestChatStreamStopsOnCallbackError(t *testing.T) {
 		`data: {"choices":[{"delta":{"content":"b"}}]}` + "\n\n" +
 		"data: [DONE]\n\n"
 	srv := sseServer(t, http.StatusOK, body, nil)
-	client := New(srv.URL, srv.URL, 5*time.Second)
+	client := New(srv.URL, srv.URL, "", 5*time.Second)
 	stop := errors.New("client went away")
 
 	calls := 0
@@ -137,5 +137,80 @@ func TestChatStreamReadsEventsOfAnySize(t *testing.T) {
 	}
 	if got := chunks[0].Choices[0].Delta.ToolCalls[0].Function.Arguments; got != arguments {
 		t.Errorf("arguments length = %d, want %d", len(got), len(arguments))
+	}
+}
+
+func TestAPIKeyIsSentOnEveryBackendCall(t *testing.T) {
+	calls := map[string]func(*Client) error{
+		"chat": func(c *Client) error {
+			_, err := c.Chat(context.Background(), openai.ChatRequest{Model: "m"})
+			return err
+		},
+		"stream": func(c *Client) error {
+			return c.ChatStream(context.Background(), openai.ChatRequest{Model: "m"}, func(openai.ChatChunk) error { return nil })
+		},
+		"embeddings": func(c *Client) error {
+			_, err := c.Embeddings(context.Background(), openai.EmbeddingRequest{Model: "m", Input: "hi"})
+			return err
+		},
+		"ping": func(c *Client) error {
+			return c.Ping(context.Background())
+		},
+	}
+	keys := map[string]string{"with key": "secret", "without key": ""}
+
+	for callName, call := range calls {
+		for keyName, key := range keys {
+			t.Run(callName+" "+keyName, func(t *testing.T) {
+				var gotAuth string
+				srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+					gotAuth = r.Header.Get("Authorization")
+					switch r.URL.Path {
+					case "/chat/completions":
+						raw, _ := io.ReadAll(r.Body)
+						if strings.Contains(string(raw), `"stream":true`) {
+							_, _ = io.WriteString(w, "data: [DONE]\n\n")
+							return
+						}
+						_, _ = io.WriteString(w, `{"choices":[{"message":{"role":"assistant","content":"hi"}}]}`)
+					case "/embeddings":
+						_, _ = io.WriteString(w, `{"data":[{"embedding":[0.1]}]}`)
+					case "/models":
+						_, _ = io.WriteString(w, `{"data":[]}`)
+					default:
+						t.Errorf("path = %s", r.URL.Path)
+					}
+				}))
+				t.Cleanup(srv.Close)
+
+				if err := call(New(srv.URL, srv.URL, key, 5*time.Second)); err != nil {
+					t.Fatal(err)
+				}
+
+				want := ""
+				if key != "" {
+					want = "Bearer " + key
+				}
+				if gotAuth != want {
+					t.Errorf("Authorization = %q, want %q", gotAuth, want)
+				}
+			})
+		}
+	}
+}
+
+func TestAuthRefusalReachesTheCaller(t *testing.T) {
+	refusal := `{"error":{"message":"invalid api key"}}`
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.WriteHeader(http.StatusUnauthorized)
+		_, _ = io.WriteString(w, refusal)
+	}))
+	t.Cleanup(srv.Close)
+	client := New(srv.URL, srv.URL, "", 5*time.Second)
+
+	_, err := client.Chat(context.Background(), openai.ChatRequest{Model: "m"})
+
+	if err == nil || !strings.Contains(err.Error(), "401") || !strings.Contains(err.Error(), "invalid api key") {
+		t.Errorf("err = %v, want the backend status and message", err)
 	}
 }

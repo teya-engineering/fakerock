@@ -62,9 +62,14 @@ fi
 # the bundled one is. Ollama loads models on first use, so this is where that cost lands.
 if [ "${LLAMA_WARMUP:-on}" = "on" ]; then
   echo "warmup: sending a one-token completion to ${BACKEND_BASE_URL}"
+  auth_header=()
+  if [ -n "${BACKEND_API_KEY:-}" ]; then
+    auth_header=(-H "Authorization: Bearer ${BACKEND_API_KEY}")
+  fi
   warmup_start=$(date +%s)
   if curl -sSf -X POST "${BACKEND_BASE_URL%/}/chat/completions" \
       -H "Content-Type: application/json" \
+      "${auth_header[@]}" \
       -d "{\"model\":\"${BACKEND_MODEL}\",\"messages\":[{\"role\":\"user\",\"content\":\"hi\"}],\"max_tokens\":1}" \
       -o /dev/null; then
     echo "warmup: done in $(( $(date +%s) - warmup_start ))s"

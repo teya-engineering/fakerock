@@ -19,6 +19,7 @@ const (
 type Config struct {
 	Addr                string
 	BackendBaseURL      string
+	BackendAPIKey       string
 	EmbeddingBaseURL    string
 	BackendTimeout      time.Duration
 	Model               string
@@ -63,6 +64,7 @@ func Load() (Config, error) {
 	return Config{
 		Addr:                valueOr(os.Getenv("LISTEN_ADDR"), defaultAddr),
 		BackendBaseURL:      backendBaseURL,
+		BackendAPIKey:       os.Getenv("BACKEND_API_KEY"),
 		EmbeddingBaseURL:    strings.TrimSuffix(valueOr(os.Getenv("BACKEND_EMBEDDING_BASE_URL"), backendBaseURL), "/"),
 		BackendTimeout:      timeout,
 		Model:               model,
