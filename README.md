@@ -110,7 +110,7 @@ cannot be pointed here this way.
 | Operation | Behaviour |
 |---|---|
 | `Converse` | Full translation, including tool calling |
-| `ConverseStream` | Same, returned as AWS event stream frames |
+| `ConverseStream` | Same, streamed from the backend as AWS event stream frames |
 | `ApplyGuardrail` | Always returns `action: NONE`, so content passes through |
 | `InvokeModel` (Titan text embeddings) | Translated to the backend's `/v1/embeddings`, resized to the requested width |
 

@@ -45,8 +45,8 @@ AWS SDK  →  internal/server  →  internal/translate  →  internal/backend  �
 
 A `Converse` request is decoded into `bedrock.ConverseRequest`, turned into an
 `openai.ChatRequest`, sent to the backend, and the reply is turned back into a
-`bedrock.ConverseResponse`. `ConverseStream` does exactly the same, then replays the finished
-response as event stream frames.
+`bedrock.ConverseResponse`. `ConverseStream` translates the request the same way, asks the backend
+to stream, and turns each chunk into event stream frames as it arrives.
 
 ### Package Layout
 
@@ -97,14 +97,18 @@ reaches the caller as an opaque generic error, so all failures go through `write
 
 Streaming validates the request and calls the backend before writing anything, because once the
 first frame is written the status is fixed at 200 and the client can no longer be told the request
-was bad.
+was bad. A failure after that point is sent as a `modelStreamErrorException` frame, which the SDK
+raises as an exception. A stream that just stopped would read as a complete, shorter answer.
 
 ### Streaming
 
-fakerock does not stream from the backend. It waits for the complete response, then replays it as
-the frames a streaming client expects: `messageStart`, text deltas chunked at 40 runes, tool use
-blocks, `contentBlockStop`, `messageStop`, `metadata`. Time to first token is that of the whole
-generation. Every other observable detail matches a real stream.
+`ConverseStream` sends `stream: true` with `stream_options.include_usage` to the backend and
+translates every server-sent chunk as it arrives, flushing after each one (`translate.Stream`).
+Each text fragment becomes a `contentBlockDelta`. Each tool call becomes a `contentBlockStart` with
+its id and name, then one `contentBlockDelta` per arguments fragment, so a client watching a tool's
+input sees it grow. Blocks are numbered in output order and only one is open at a time, as in
+Bedrock. `messageStop` and `metadata` follow once the backend sends `[DONE]`; a stream that ends
+without it is an error.
 
 Frames are encoded with the AWS `eventstream` package, which is the one direct dependency.
 

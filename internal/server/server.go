@@ -12,6 +12,7 @@ import (
 
 type Backend interface {
 	Chat(ctx context.Context, req openai.ChatRequest) (openai.ChatResponse, error)
+	ChatStream(ctx context.Context, req openai.ChatRequest, onChunk func(openai.ChatChunk) error) error
 	Embeddings(ctx context.Context, req openai.EmbeddingRequest) (openai.EmbeddingResponse, error)
 	Ping(ctx context.Context) error
 }

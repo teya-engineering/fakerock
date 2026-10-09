@@ -11,6 +11,10 @@ const (
 	errNotFound   = "ResourceNotFoundException"
 	errModel      = "ModelErrorException"
 	errInternal   = "InternalServerException"
+
+	// errModelStream is sent as an exception frame inside an event stream that has already
+	// started. Event stream exception types are the union member names, hence lower camel case.
+	errModelStream = "modelStreamErrorException"
 )
 
 // AWS SDKs pick the exception class off x-amzn-ErrorType; without it every failure

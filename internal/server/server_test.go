@@ -19,6 +19,7 @@ import (
 type stubBackend struct {
 	got       openai.ChatRequest
 	resp      openai.ChatResponse
+	chunks    []openai.ChatChunk
 	err       error
 	gotEmbed  openai.EmbeddingRequest
 	embedResp openai.EmbeddingResponse
@@ -33,6 +34,18 @@ func (s *stubBackend) Ping(context.Context) error {
 func (s *stubBackend) Chat(_ context.Context, req openai.ChatRequest) (openai.ChatResponse, error) {
 	s.got = req
 	return s.resp, s.err
+}
+
+// ChatStream delivers the stub's chunks, then returns err, so err with no chunks fails before
+// anything is streamed and err with chunks fails part way through.
+func (s *stubBackend) ChatStream(_ context.Context, req openai.ChatRequest, onChunk func(openai.ChatChunk) error) error {
+	s.got = req
+	for _, chunk := range s.chunks {
+		if err := onChunk(chunk); err != nil {
+			return err
+		}
+	}
+	return s.err
 }
 
 func (s *stubBackend) Embeddings(_ context.Context, req openai.EmbeddingRequest) (openai.EmbeddingResponse, error) {

@@ -13,6 +13,7 @@ import (
 	"github.com/aws/aws-sdk-go-v2/aws/protocol/eventstream"
 
 	"github.com/saltpay/fakerock/internal/bedrock"
+	"github.com/saltpay/fakerock/internal/openai"
 	"github.com/saltpay/fakerock/internal/translate"
 )
 
@@ -40,44 +41,95 @@ func (s *Server) handleConverseStream(w http.ResponseWriter, r *http.Request, mo
 		"messages", len(chatReq.Messages), "tools", len(chatReq.Tools),
 		"additionalFields", slices.Sorted(maps.Keys(chatReq.Extra)))
 
+	var stream translate.Stream
+	out := &eventWriter{w: w, encoder: eventstream.NewEncoder()}
 	start := time.Now()
-	chatResp, err := s.backend.Chat(r.Context(), chatReq)
-	if err != nil {
-		slog.Error("backend call failed", "model", model, "err", err)
-		writeError(w, http.StatusBadGateway, errModel, err.Error())
+	err = s.backend.ChatStream(r.Context(), chatReq, func(chunk openai.ChatChunk) error {
+		events, err := stream.Chunk(chunk)
+		if err != nil {
+			return err
+		}
+		return out.write(events)
+	})
+	if err == nil {
+		var events []bedrock.Event
+		events, err = stream.Finish(time.Since(start))
+		if err == nil {
+			err = out.write(events)
+		}
+	}
+	if err == nil {
 		return
 	}
 
-	resp, err := translate.FromOpenAI(chatResp, time.Since(start))
-	if err != nil {
-		slog.Error("translating backend response failed", "model", model, "err", err)
+	slog.Error("streaming from backend failed", "model", model, "err", err)
+	// After the first frame the status is fixed at 200, so only an exception frame can fail the call.
+	if !out.started {
 		writeError(w, http.StatusBadGateway, errModel, err.Error())
 		return
 	}
-
-	// Nothing has been written yet, so failures up to here can still be reported as a
-	// normal AWS error. Once the first frame goes out the status is fixed at 200.
-	w.Header().Set("Content-Type", eventStreamContentType)
-	w.WriteHeader(http.StatusOK)
-
-	if err := writeEvents(w, translate.StreamEvents(resp)); err != nil {
-		slog.Error("writing event stream failed", "model", s.model, "err", err)
+	if err := out.writeException(errModelStream, err.Error()); err != nil {
+		slog.Error("writing stream exception failed", "model", model, "err", err)
 	}
 }
 
-func writeEvents(w http.ResponseWriter, events []bedrock.Event) error {
-	encoder := eventstream.NewEncoder()
-	flusher, _ := w.(http.Flusher)
+// eventWriter sends the 200 and the event stream content type with the first frame, so a
+// failure before any frame can still go out as a normal AWS error.
+type eventWriter struct {
+	w       http.ResponseWriter
+	encoder *eventstream.Encoder
+	started bool
+}
 
+// write sends events and flushes, so each backend chunk reaches the client as it arrives.
+func (e *eventWriter) write(events []bedrock.Event) error {
+	if len(events) == 0 {
+		return nil
+	}
+	e.begin()
 	for _, event := range events {
-		if err := writeEvent(w, encoder, event); err != nil {
+		if err := writeEvent(e.w, e.encoder, event); err != nil {
 			return err
 		}
-		if flusher != nil {
-			flusher.Flush()
-		}
 	}
+	e.flush()
 	return nil
+}
+
+func (e *eventWriter) writeException(exceptionType, message string) error {
+	payload, err := json.Marshal(map[string]string{"message": message})
+	if err != nil {
+		return fmt.Errorf("encoding %s payload: %w", exceptionType, err)
+	}
+	e.begin()
+	err = e.encoder.Encode(e.w, eventstream.Message{
+		Headers: eventstream.Headers{
+			{Name: ":message-type", Value: eventstream.StringValue("exception")},
+			{Name: ":exception-type", Value: eventstream.StringValue(exceptionType)},
+			{Name: ":content-type", Value: eventstream.StringValue("application/json")},
+		},
+		Payload: payload,
+	})
+	if err != nil {
+		return fmt.Errorf("encoding %s frame: %w", exceptionType, err)
+	}
+	e.flush()
+	return nil
+}
+
+func (e *eventWriter) begin() {
+	if e.started {
+		return
+	}
+	e.started = true
+	e.w.Header().Set("Content-Type", eventStreamContentType)
+	e.w.WriteHeader(http.StatusOK)
+}
+
+func (e *eventWriter) flush() {
+	if flusher, ok := e.w.(http.Flusher); ok {
+		flusher.Flush()
+	}
 }
 
 func writeEvent(w io.Writer, encoder *eventstream.Encoder, event bedrock.Event) error {

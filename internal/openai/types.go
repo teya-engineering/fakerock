@@ -7,6 +7,7 @@ type ChatRequest struct {
 	Messages       []Message       `json:"messages"`
 	Tools          []Tool          `json:"tools,omitempty"`
 	Stream         bool            `json:"stream"`
+	StreamOptions  *StreamOptions  `json:"stream_options,omitempty"`
 	MaxTokens      *int            `json:"max_tokens,omitempty"`
 	Temperature    *float64        `json:"temperature,omitempty"`
 	TopP           *float64        `json:"top_p,omitempty"`
@@ -32,6 +33,10 @@ func (r ChatRequest) MarshalJSON() ([]byte, error) {
 	// Both are JSON objects: drop the struct's closing brace and Extra's opening one, join with a comma.
 	merged := append(body[:len(body)-1], ',')
 	return append(merged, extra[1:]...), nil
+}
+
+type StreamOptions struct {
+	IncludeUsage bool `json:"include_usage"`
 }
 
 type ResponseFormat struct {
@@ -102,6 +107,43 @@ type Usage struct {
 	PromptTokens     int `json:"prompt_tokens"`
 	CompletionTokens int `json:"completion_tokens"`
 	TotalTokens      int `json:"total_tokens"`
+}
+
+// ChatChunk is one server-sent event of a streamed chat completion. With include_usage the
+// last chunk before [DONE] has no choices and carries Usage. A gateway that fails after the
+// stream has started sends Error in place of choices.
+type ChatChunk struct {
+	Choices []ChunkChoice `json:"choices"`
+	Usage   *Usage        `json:"usage,omitempty"`
+	Error   *StreamError  `json:"error,omitempty"`
+}
+
+type ChunkChoice struct {
+	Delta        ChunkDelta `json:"delta"`
+	FinishReason string     `json:"finish_reason"`
+}
+
+type ChunkDelta struct {
+	Role      string          `json:"role,omitempty"`
+	Content   string          `json:"content,omitempty"`
+	ToolCalls []ToolCallDelta `json:"tool_calls,omitempty"`
+}
+
+// ToolCallDelta carries ID and Function.Name on the first fragment of a call, then
+// Function.Arguments in pieces. Index ties the pieces together.
+type ToolCallDelta struct {
+	Index    int               `json:"index"`
+	ID       string            `json:"id,omitempty"`
+	Function FunctionCallDelta `json:"function"`
+}
+
+type FunctionCallDelta struct {
+	Name      string `json:"name,omitempty"`
+	Arguments string `json:"arguments,omitempty"`
+}
+
+type StreamError struct {
+	Message string `json:"message"`
 }
 
 const (

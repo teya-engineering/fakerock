@@ -37,7 +37,7 @@ func FromOpenAI(resp openai.ChatResponse, latency time.Duration) (bedrock.Conver
 
 	return bedrock.ConverseResponse{
 		Output:     bedrock.Output{Message: bedrock.Message{Role: "assistant", Content: content}},
-		StopReason: stopReason(choice),
+		StopReason: stopReason(choice.FinishReason, len(choice.Message.ToolCalls) > 0),
 		Usage: bedrock.Usage{
 			InputTokens:  resp.Usage.PromptTokens,
 			OutputTokens: resp.Usage.CompletionTokens,
@@ -49,11 +49,11 @@ func FromOpenAI(resp openai.ChatResponse, latency time.Duration) (bedrock.Conver
 
 // Tool calls win over finish_reason: some backends report "stop" while still emitting
 // tool calls, and a client that trusts end_turn there would drop out of the agent loop.
-func stopReason(choice openai.Choice) string {
-	if len(choice.Message.ToolCalls) > 0 {
+func stopReason(finishReason string, hasToolCalls bool) string {
+	if hasToolCalls {
 		return bedrock.StopReasonToolUse
 	}
-	switch choice.FinishReason {
+	switch finishReason {
 	case openai.FinishReasonToolCalls:
 		return bedrock.StopReasonToolUse
 	case openai.FinishReasonLength:
